@@ -2,6 +2,14 @@
 
 Nov 7, 2026 · @e
 
+> Implementation cross-reference (Nov 7, 2026): [DESIGN.md](DESIGN.md) reconciles
+> this proposal with the original design and current firmware, covering the Mac
+> stack, demo props, exposure/collision rules, and latency. Monocular overlap is
+> suspected contact rather than confirmed touch, and marker pose does not supply
+> hand depth. The Adafruit motor supports PWM intensity; the current sketch needs
+> intensity reception/PWM added to implement the binary protocol below. Read the
+> implementation decisions alongside this original product proposal.
+
 ## Summary
 
 ArmGuard PD warns a home peritoneal dialysis (PD) patient a fraction of a second before their finger touches a sterile connector, and logs every exchange for their PD nurse. A webcam tracks the hands with MediaPipe. An upper-arm band buzzes harder as a fingertip nears the sterile tip. A nurse dashboard scores each patient's technique over time.

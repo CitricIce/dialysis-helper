@@ -4,7 +4,15 @@ Prototype only, not a medical device. A camera watches a user's hands during
 home peritoneal dialysis setup, and a wristband buzzes to warn them before a
 mistake.
 
-See [DESIGN.md](DESIGN.md) for the overall design and build plan.
+The updated [ArmGuard PD product design](<ArmGuard PD Real-Time Sterile Technique Coaching for Home Peritoneal Dialysis.md>)
+sets the product direction. See [DESIGN.md](DESIGN.md) for the reconciled Mac-side
+stack, demo props, collision coverage, and latency plan. The primary camera is
+now an iPhone through Continuity Camera on a Mac.
+
+The Mac application is planned, not implemented. The Adafruit motor supports
+variable intensity through PWM; the current firmware below uses fixed on/off
+patterns. Receiving an intensity value and driving PWM is a firmware update,
+not a motor replacement.
 
 ## Piece 1: Wristband
 

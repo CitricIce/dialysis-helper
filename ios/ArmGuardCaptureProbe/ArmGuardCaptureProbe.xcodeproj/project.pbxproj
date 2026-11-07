@@ -1,0 +1,35 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+		52BC2FF184CD9E64C2D5C138 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/ArmGuardCaptureProbeApp.swift"; sourceTree = "<group>"; };
+		5B0B184B693B993B5E520ABF = { isa = PBXBuildFile; fileRef = 52BC2FF184CD9E64C2D5C138; };
+		D7E2A197C022FDB881528828 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/ContentView.swift"; sourceTree = "<group>"; };
+		54421F7861D7014005F139AD = { isa = PBXBuildFile; fileRef = D7E2A197C022FDB881528828; };
+		00127F63DA98FE217FFC8563 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/CaptureController.swift"; sourceTree = "<group>"; };
+		7C0E4A6ACA512EBF95503876 = { isa = PBXBuildFile; fileRef = 00127F63DA98FE217FFC8563; };
+		C323B543F6A316371E85A23B = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/FrameRenderer.swift"; sourceTree = "<group>"; };
+		5718CC13E1A0370077317572 = { isa = PBXBuildFile; fileRef = C323B543F6A316371E85A23B; };
+		648EE394600C911B51900919 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Core/Sources/CaptureProbeCore/DepthAnalysis.swift"; sourceTree = "<group>"; };
+		96606D756459ECA09302D94E = { isa = PBXBuildFile; fileRef = 648EE394600C911B51900919; };
+		2E353D68BE52B76DE85B8C26 = { isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ArmGuardCaptureProbe/Info.plist; sourceTree = "<group>"; };
+		CEBC3DD7697151D288F793A3 = { isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		496C744B70839754303E8C75 = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ArmGuardCaptureProbe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		807C382AB49A9BFF2D00E986 = { isa = PBXGroup; children = (52BC2FF184CD9E64C2D5C138, D7E2A197C022FDB881528828, 00127F63DA98FE217FFC8563, C323B543F6A316371E85A23B, 648EE394600C911B51900919, 2E353D68BE52B76DE85B8C26, CEBC3DD7697151D288F793A3, BF7D4AF7829CE15E0D25CC26); sourceTree = "<group>"; };
+		BF7D4AF7829CE15E0D25CC26 = { isa = PBXGroup; children = (496C744B70839754303E8C75); name = Products; sourceTree = "<group>"; };
+		85801765FEDA4BFDBCBD9E42 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (5B0B184B693B993B5E520ABF, 54421F7861D7014005F139AD, 7C0E4A6ACA512EBF95503876, 5718CC13E1A0370077317572, 96606D756459ECA09302D94E); runOnlyForDeploymentPostprocessing = 0; };
+		8F94C5A94E3C5C6E10CFE4A8 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		E75AC9A4C211F82619532950 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		112125C3CD87BC95A85CED8C = { isa = PBXNativeTarget; buildConfigurationList = ADC89EEBE2BC0F4EB34F37E0; buildPhases = (85801765FEDA4BFDBCBD9E42, 8F94C5A94E3C5C6E10CFE4A8, E75AC9A4C211F82619532950); buildRules = (); dependencies = (); name = ArmGuardCaptureProbe; productName = ArmGuardCaptureProbe; productReference = 496C744B70839754303E8C75; productType = "com.apple.product-type.application"; };
+		0A6924DE4BA8A963409BEA56 = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 5.0; ENABLE_USER_SCRIPT_SANDBOXING = YES; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; ONLY_ACTIVE_ARCH = YES; }; name = Debug; };
+		B0993D0CA928C82BBCC3B8D6 = { isa = XCBuildConfiguration; buildSettings = { CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = ""; PRODUCT_BUNDLE_IDENTIFIER = org.armguard.captureprobe; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = ArmGuardCaptureProbe/Info.plist; GENERATE_INFOPLIST_FILE = NO; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 0.1; TARGETED_DEVICE_FAMILY = 1; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO; SWIFT_STRICT_CONCURRENCY = minimal; SWIFT_EMIT_LOC_STRINGS = NO; }; name = Debug; };
+		A2FF17A581964043C091EE3A = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 5.0; ENABLE_USER_SCRIPT_SANDBOXING = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Release; };
+		70A5BCA41D9E5CFFF2452974 = { isa = XCBuildConfiguration; buildSettings = { CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = ""; PRODUCT_BUNDLE_IDENTIFIER = org.armguard.captureprobe; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = ArmGuardCaptureProbe/Info.plist; GENERATE_INFOPLIST_FILE = NO; CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 0.1; TARGETED_DEVICE_FAMILY = 1; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO; SWIFT_STRICT_CONCURRENCY = minimal; SWIFT_EMIT_LOC_STRINGS = NO; }; name = Release; };
+		88ED9E1BC1FA4D9ECCBC13D3 = { isa = XCConfigurationList; buildConfigurations = (0A6924DE4BA8A963409BEA56, A2FF17A581964043C091EE3A); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		ADC89EEBE2BC0F4EB34F37E0 = { isa = XCConfigurationList; buildConfigurations = (B0993D0CA928C82BBCC3B8D6, 70A5BCA41D9E5CFFF2452974); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		AEF2ED059AA83364D689D1F3 = { isa = PBXProject; attributes = { BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 1600; TargetAttributes = { 112125C3CD87BC95A85CED8C = { CreatedOnToolsVersion = 16.0; ProvisioningStyle = Automatic; }; }; }; buildConfigurationList = 88ED9E1BC1FA4D9ECCBC13D3; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = 807C382AB49A9BFF2D00E986; productRefGroup = BF7D4AF7829CE15E0D25CC26; projectDirPath = ""; projectRoot = ""; targets = (112125C3CD87BC95A85CED8C); };
+	};
+	rootObject = AEF2ED059AA83364D689D1F3;
+}

@@ -1,8 +1,10 @@
 # ArmGuard PD: software and feedback design
 
-Status: implementation plan, reconciled November 7, 2026. Only the original ESP32
-firmware exists in this repository; neither the native iPhone application nor
-the earlier Mac application below is implemented or benchmarked.
+Status: implementation plan, reconciled November 7, 2026. The original ESP32
+firmware and a [native camera/LiDAR probe](ios/ArmGuardCaptureProbe/README.md)
+exist in this repository. The probe has source/project files; iOS compilation and
+physical-device verification require full Xcode, which is not currently available.
+The full coaching application and earlier Mac application remain unimplemented.
 
 The updated [ArmGuard PD product design](<ArmGuard PD Real-Time Sterile Technique Coaching for Home Peritoneal Dialysis.md>)
 sets the product direction. The current preferred implementation runs capture,
@@ -45,6 +47,12 @@ weights require validation. Geometry does not establish sterility or prove a
 clean exchange.
 
 ## Preferred implementation: native iPhone, no live computer link
+
+The first capture milestone is now in `ios/ArmGuardCaptureProbe/`: an ARKit
+scene-depth test with live RGB, a depth visualization and diagnostics. No markers,
+inference model or band are needed for this milestone. It uses ARKit's paired
+camera/depth frames rather than the proposed direct AVFoundation pipeline below;
+the eventual app can compare the two after hardware capture is established.
 
 The user proposes building the app and running inference locally. Adopt this
 direction for the next implementation, targeting an iPhone 15 Pro if available.

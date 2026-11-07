@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 .venv/
 build/
+.build/
+.swiftpm/
+xcuserdata/
+*.xcuserstate

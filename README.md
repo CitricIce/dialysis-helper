@@ -10,7 +10,13 @@ installation steps, demo props, collision coverage, and latency approach. The
 current preferred architecture runs capture, tracking, risk, BLE and audio on
 the iPhone; the earlier Mac/Continuity Camera stack remains an alternative.
 
-The iPhone and Mac applications are planned, not implemented. The Adafruit motor supports
+The first [iPhone camera/LiDAR test app](ios/ArmGuardCaptureProbe/README.md) now has
+an Xcode project and source. It displays RGB/depth and diagnostics; it does not
+yet detect hands/props or control the band. Full Xcode and a physical LiDAR phone
+are needed to compile/install and verify it. No printed markers are needed for
+this capture test. The full coaching applications remain planned.
+
+The Adafruit motor supports
 variable intensity through PWM; the current firmware below uses fixed on/off
 patterns. Receiving an intensity value and driving PWM is a firmware update,
 not a motor replacement.

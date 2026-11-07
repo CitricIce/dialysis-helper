@@ -1,26 +1,30 @@
-# ArmGuard PD: Mac vision and feedback design
+# ArmGuard PD: software and feedback design
 
 Status: implementation plan, reconciled November 7, 2026. Only the original ESP32
-firmware exists in this repository; the Mac application below is not implemented
-or benchmarked.
+firmware exists in this repository; neither the native iPhone application nor
+the earlier Mac application below is implemented or benchmarked.
 
 The updated [ArmGuard PD product design](<ArmGuard PD Real-Time Sterile Technique Coaching for Home Peritoneal Dialysis.md>)
-sets the product direction. This document translates it into a Mac implementation
-plan and corrects technical assumptions. [README.md](README.md) documents the
-existing firmware and wiring.
+sets the product direction. The current preferred implementation runs capture,
+tracking, risk, BLE and audio on the iPhone. The native plan below supersedes the
+earlier Mac-primary execution/stack sections, which are retained as alternatives.
+Prop geometry, exposure rules and bench-validation requirements apply to either
+implementation. [README.md](README.md) documents existing firmware and wiring.
 
 ## Scope and reconciliation
 
 There are two programs:
 
-1. **Mac:** receive the iPhone feed, locate protected surfaces and nearby hazards,
-   estimate risk, transmit vibration intensity, and speak a relevant prompt.
-2. **ESP32:** receive commands and drive the motor. Vision and rules stay on Mac.
+1. **Native iPhone app:** capture RGB/depth, locate protected surfaces and nearby
+   hazards, estimate risk, transmit vibration intensity directly to the band,
+   and speak a relevant prompt. A Mac is for development and optional later logs.
+2. **ESP32:** receive commands and drive the motor. Vision and rules stay on phone.
 
 Current work focuses on the first program. Its central rule is **protect an
 exposed sterile surface from an inappropriate collision**, whether the hand or
 connector is moving. Entering a tray zone is supporting evidence, not proof of an
-exchange step or contamination.
+exchange step or contamination. The table records the earlier Mac design
+reconciliation; see the native implementation decision immediately below it.
 
 | Topic | Earlier DESIGN / README | Updated product design | Implementation decision |
 | --- | --- | --- | --- |
@@ -39,6 +43,119 @@ exchange step or contamination.
 The product document's clinical sequence, infection-reduction claims and scoring
 weights require validation. Geometry does not establish sterility or prove a
 clean exchange.
+
+## Preferred implementation: native iPhone, no live computer link
+
+The user proposes building the app and running inference locally. Adopt this
+direction for the next implementation, targeting an iPhone 15 Pro if available.
+Its rear LiDAR/main-camera combination is a capture candidate, not evidence of
+contact-detection accuracy. The standard iPhone 16 can separately test front
+TrueDepth; do not silently substitute RGB-only operation for validated depth.
+
+```text
+iPhone RGB + depth
+  → on-device hand and prop observations
+  → registered geometry + exposure/risk rules
+  → CoreBluetooth → ESP32 → PWM vibration
+  → phone speaker + local event log
+
+Mac: build/install/debug; optional later event export or dashboard
+```
+
+This removes RGB/depth encoding, transport and host decoding from the live loop.
+It does not establish a latency result: measure phone inference, depth validity,
+BLE, motor onset and sustained thermal performance on the actual device. No
+Record3D purchase, server, Apple-hosted inference or live Mac receiver is required
+for this architecture.
+
+| Layer | Native choice | Design consequence |
+| --- | --- | --- |
+| App/UI | Swift + SwiftUI, native camera preview/overlay | One foreground screen with readiness, arm/stop, calibration and manual phase controls |
+| RGB/depth | AVFoundation video/depth outputs and AVCaptureDataOutputSynchronizer | Process paired frames with timestamps and calibration; begin from Apple's capture sample |
+| Hand model | Vision VNDetectHumanHandPoseRequest, maximumHandCount=2 | Built-in hand-pose detection; no custom training or Python runtime; validate this detector rather than assuming MediaPipe results transfer |
+| Prop markers | Keep ArUco via OpenCV iOS and a thin Objective-C++ bridge | Preserve existing marker IDs and measured prop profiles; native integration is work but requires no model training |
+| Marker simplification, optional | Native Vision QR detection on rigid flags | Alternative if avoiding OpenCV is important; requires different printed tags and validated corner/pose handling, not an ArUco-compatible drop-in |
+| Coordinates/risk | Swift geometry with calibrated depth and marker transforms | Same boundary-clearance, exposure, uncertainty, loss and review semantics as this document |
+| Band | CoreBluetooth central directly to ESP32 characteristic | Preserve explicit legacy versus intensity-v2 modes, freshness, heartbeat and watchdog contract |
+| Audio | AVAudioPlayer preloaded clips; AVSpeechSynthesizer development fallback | Priority/cooldown worker; speech must not block vision |
+| Log | Small local Codable event records on a background writer | Export summaries later; no dashboard/network dependency for alerts |
+
+Apple documents [hand-pose detection](https://developer.apple.com/documentation/vision/vndetecthumanhandposerequest),
+[synchronized LiDAR capture](https://developer.apple.com/documentation/avfoundation/capturing-depth-using-the-lidar-camera),
+and [BLE central communication](https://developer.apple.com/library/archive/documentation/NetworkingInternetWeb/Conceptual/CoreBluetooth_concepts/PerformingCommonCentralRoleTasks/PerformingCommonCentralRoleTasks.html).
+Vision hand joints are image observations, not automatically metric 3D coordinates.
+Register RGB, depth and marker geometry into a common coordinate space. Reject
+invalid/edge-mixed/background depth samples rather than treating them as safe.
+
+Use a latest-only synchronized frame slot and one inference worker, with UI, BLE,
+audio and disk I/O scheduled independently. Initial capture target is 30 fps;
+infer as quickly as validated, discarding backlog. Keep depth filtering under
+measurement because smoothing can add delay at moving boundaries. Log capture
+presentation times, inference time, decision age and output dispatch. Camera
+permission, Bluetooth permission/state and required calibration are explicit
+readiness gates. No microphone permission is required merely to speak a prompt.
+
+The first app is foreground-only. Keep it awake while explicitly armed; on
+backgrounding, capture interruption or loss of valid observations, disarm, clear
+pending intensity, send OFF if possible and retain review flags. On resume require
+readiness/rearming. Do not assume background Bluetooth keeps camera tracking alive.
+
+### Development install on the teammate's phone
+
+The user confirmed the phone and development Mac will be together. Use **direct
+Xcode installation by cable**:
+
+1. Install full Xcode with an iOS SDK/device support compatible with the phone's
+   installed iOS. This workspace currently has only Command Line Tools selected;
+   no Xcode app was found in the usual application folders. An iOS build and
+   hardware validation cannot be performed with that setup alone.
+2. Open the project, sign into an Apple Account in Xcode and select the appropriate
+   team with automatic signing and a unique bundle identifier. The account owner
+   completes account authentication locally.
+3. Connect/unlock the phone, trust/pair it with the Mac and select it as the run
+   destination. Enable Developer Mode when prompted; this includes a restart and
+   confirmation by the phone owner.
+4. Build and run. Grant camera/Bluetooth access. Verify actual capture, marker
+   geometry and the selected BLE protocol before enabling warnings.
+5. Disconnect the development cable and verify standalone operation. Rebuild and
+   reinstall when the development provisioning profile expires.
+
+A free Personal Team supports local testing; its provisioning profiles expire
+after seven days. This does not require buying a Developer Program membership
+for the local prototype. See Apple's [account/signing limits](https://developer.apple.com/help/account/basics/about-your-developer-account)
+and [Developer Mode instructions](https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device).
+Do not describe sending an arbitrary unsigned app file as a working iPhone install.
+
+If the phone is remote, either send the source/project to someone with Xcode who
+can sign and install locally, or use an established signed distribution route.
+TestFlight requires Developer Program access; Apple's listed membership is
+[$99 USD/year](https://developer.apple.com/programs/). External testing includes
+a first-build review step; see [TestFlight distribution](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview/).
+Use direct installation when available rather than depending on that review for
+an imminent demo. No time estimate assumes successful signing or existing Xcode.
+
+### Complexity and implementation sequence
+
+Installation is a contained setup task when the phone and development Mac are
+together. The difficult engineering is reliable geometry/depth at moving finger
+boundaries, occlusion handling, and end-to-end timing. On-device execution avoids
+building a streaming protocol but adds native capture, UI and app lifecycle work.
+
+1. Establish a signed empty app on the actual phone, then verify RGB/depth capture.
+2. Add Vision hands and a debug depth display; measure hovering separation and
+   invalid depth at the intended working distance before promising contact precision.
+3. Add marker registration and the shared risk state machine; display numeric risk
+   with mock output, including safe grip and loss cases.
+4. Add audio and direct BLE legacy commands; add intensity-v2 only with compatible
+   firmware. Verify command expiry, app interruption and reconnect behavior.
+5. Profile sustained operation and record physical warning-to-motor trials. Local
+   logs and optional export follow; defer dashboard, clips and automatic step checks.
+
+Suggested native modules: CaptureSession, HandTracker, MarkerTracker,
+DepthRegistration, RiskEngine, BandClient, PromptPlayer, EventStore and a single
+SessionViewModel. Implement pure Swift geometry/state tests and recorded-frame
+replay; real camera/depth/BLE/motor tests need the device. These are proposed
+modules, not files already present in this repository.
 
 ## First demo and collision coverage
 
@@ -160,6 +277,61 @@ See the [Hand Landmarker coordinate definitions](https://developers.google.com/e
 Continuity Camera RGB is not calibrated hand depth. Free-space contact requires
 validated depth/stereo or another calibrated view. An iPhone having LiDAR does not
 itself make depth available to this capture pipeline.
+
+### Available phone: standard iPhone 16
+
+The user has an iPhone 16. It has rear main/ultra-wide cameras and front TrueDepth,
+but no rear LiDAR. It supports spatial video at 1080p/30 fps; see Apple's
+[iPhone 16 specifications](https://support.apple.com/en-us/121029). Spatial video
+support is not proof of an accessible low-latency stereo stream through our
+OpenCV/Continuity Camera path.
+
+Before selecting a free-space depth implementation, run a **front TrueDepth
+feasibility test**. Mount the phone with the front camera/screen facing the props.
+Try an existing depth-streaming app first, as described below. A small native
+iPhone capture app is a fallback for capture control/transport needs; Apple
+provides a [TrueDepth streaming sample](https://developer.apple.com/documentation/avfoundation/streaming-depth-data-from-the-truedepth-camera).
+This uses camera depth output, not face-mesh tracking, and needs no custom depth
+model training. It is an additional iPhone capture component, beyond the original
+Mac-plus-band architecture. Standard rear Continuity Camera capture stays the
+baseline until the experiment passes.
+
+Measure fingertip/prop separation at 0, 1, 2, 3 and 5 cm, including vertical
+hovering, motion, boundaries, occlusion and actual prop materials. Record bias,
+variation, invalid depth and latency at the intended working distance. Register
+RGB/depth and marker geometry into the same camera coordinates; do not use depth
+from background pixels or interpret missing depth as clearance. Passing broad
+hovering separation does not establish physical-contact precision.
+
+If useful, add a timestamped RGB/depth transport to Mac, keeping latest-frame
+expiry and measuring added transport delay; on-phone processing with smaller
+observation messages is another option to benchmark. Rear stereo is a second
+experiment: inspect supported simultaneous camera combinations, synchronization
+and calibration on this device before committing. The phone's existing rear
+lenses offer a stereo opportunity, not a drop-in depth stream for the current app.
+
+### Depth transport without building an iPhone app
+
+An iPhone 15 Pro is also being considered. It has rear LiDAR; see Apple's
+[15 Pro specifications](https://support.apple.com/en-gb/111829). If available,
+test its main-camera/LiDAR feed before implementing custom rear-camera stereo.
+
+First try **Record3D USB streaming**: its
+[developer library](https://github.com/marek-simonik/record3d) supports receiving
+RGB/depth on macOS from LiDAR or TrueDepth, with a Python demo. Install the existing
+iPhone app, enable USB streaming, and integrate its Mac receiver behind our
+capture interface. This replaces Continuity Camera as the source for the depth
+experiment. Our hand tracking, prop geometry, risk, audio and BLE remain Mac code.
+
+Record3D is a third-party paid app with in-app purchases; consult its
+[listing](https://apps.apple.com/us/app/record3d-3d-videos/id1477716895) and
+[USB instructions](https://record3d.app/features) for feature access. Do not assume
+free downloads include streaming. Its Python integration may require a native
+build; package/app compatibility, per-frame metadata and end-to-end latency have
+not been verified on this Mac/phone. Keep the streaming callback short: copy a
+coherent RGB/depth/calibration snapshot into a latest-only slot and process it in
+our worker. Measure depth validity/accuracy and total delay before selecting it.
+Build a custom iPhone capture app only if the existing streamer is unsuitable.
 
 ## Mac software stack
 

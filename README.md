@@ -5,11 +5,12 @@ home peritoneal dialysis setup, and a wristband buzzes to warn them before a
 mistake.
 
 The updated [ArmGuard PD product design](<ArmGuard PD Real-Time Sterile Technique Coaching for Home Peritoneal Dialysis.md>)
-sets the product direction. See [DESIGN.md](DESIGN.md) for the reconciled Mac-side
-stack, demo props, collision coverage, and latency plan. The primary camera is
-now an iPhone through Continuity Camera on a Mac.
+sets the product direction. See [DESIGN.md](DESIGN.md) for the native iPhone plan,
+installation steps, demo props, collision coverage, and latency approach. The
+current preferred architecture runs capture, tracking, risk, BLE and audio on
+the iPhone; the earlier Mac/Continuity Camera stack remains an alternative.
 
-The Mac application is planned, not implemented. The Adafruit motor supports
+The iPhone and Mac applications are planned, not implemented. The Adafruit motor supports
 variable intensity through PWM; the current firmware below uses fixed on/off
 patterns. Receiving an intensity value and driving PWM is a firmware update,
 not a motor replacement.

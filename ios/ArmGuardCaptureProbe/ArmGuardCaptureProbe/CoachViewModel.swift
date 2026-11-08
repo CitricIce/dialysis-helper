@@ -48,6 +48,7 @@ final class CoachViewModel: ObservableObject {
     private var runID = UUID()
     private var lastRiskLevel: RiskLevel = .none
     private var lastDistanceRisk: RiskLevel = .none
+    private var cuePolicy = WarningCuePolicy()
     private let haptics = UINotificationFeedbackGenerator()
 
     init() {
@@ -405,7 +406,7 @@ final class CoachViewModel: ObservableObject {
                 : "The opening detector hasn't been added yet. For this practice, you can say continue without camera, or end session.")
             return
         }
-        warningTime = -Double.infinity; lastHazardTime = -Double.infinity; clearSince = nil
+        warningTime = -Double.infinity; lastHazardTime = -Double.infinity; clearSince = nil; cuePolicy.reset()
         persist(); say("I'm watching. Tell me when you've finished.")
     }
     func finishMonitoring() {
@@ -524,7 +525,7 @@ final class CoachViewModel: ObservableObject {
             else if now - lastHazardTime < 0.3 { band.set(intensity: 80) }
         }
     }
-    /// MEDIUM -> pulsing band + "getting close" cue; HIGH -> continuous band + "move away" cue.
+    /// MEDIUM -> pulsing band + "Careful, too close."; HIGH -> continuous band + "Stop. Hands back."
     /// Called per result and every 100 ms; BandClient expires each set() after 250 ms, so the
     /// band stops by itself if observations stop arriving.
     private func driveDistanceAlerts() {
@@ -544,10 +545,11 @@ final class CoachViewModel: ObservableObject {
             if lastDistanceRisk != .none, session?.phase != .monitoring { band.stop() }
         }
         // Phone haptics come from received(), since riskLevel includes this level.
-        // Speak on escalation, and repeat HIGH while it lasts; one shared cooldown with the LiDAR cue.
-        guard level != .none, level > lastDistanceRisk || level == .high, now - warningTime >= 4 else { return }
+        // Voice: one short cue when the danger rises (held 0.3 s), quiet when it drops,
+        // HIGH repeated only every 8 s. See WarningCuePolicy. Shares warningTime with the LiDAR cue.
+        guard let cue = cuePolicy.update(level, at: now) else { return }
         warningTime = now
-        say(level == .high ? CoachSpeech.highCue : CoachSpeech.nearCue, urgent: true)
+        say(cue == .high ? CoachSpeech.highCue : CoachSpeech.nearCue, urgent: true)
     }
     private func persist() {
         guard let session, let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }

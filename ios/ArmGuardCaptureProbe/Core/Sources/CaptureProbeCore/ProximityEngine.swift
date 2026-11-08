@@ -248,6 +248,42 @@ public enum WarningDistances {
     public static var isDefault: Bool { highMM == defaultHighMM && mediumMM == defaultMediumMM }
 }
 
+/// Decides when to speak a distance warning, so short cues don't pile up into noise.
+/// The band and screen alert continuously; the voice only marks the danger getting worse:
+/// - speak once when the level rises and has held for `dwellSeconds` (ignores flickers),
+/// - stay quiet when the level drops (HIGH back to MEDIUM),
+/// - repeat HIGH only every `repeatHighSeconds` while it lasts,
+/// - start a new episode only after the hand has been clear for `clearResetSeconds`.
+public struct WarningCuePolicy {
+    public var dwellSeconds = 0.3
+    public var repeatHighSeconds = 8.0
+    public var clearResetSeconds = 1.0
+    private var level: RiskLevel = .none
+    private var levelSince = 0.0
+    private var spoken: RiskLevel = .none
+    private var lastSpoken = -Double.infinity
+
+    public init() {}
+
+    public mutating func reset() { level = .none; levelSince = 0; spoken = .none; lastSpoken = -.infinity }
+
+    /// Feed the current level (any rate). Returns the level to announce now, or nil to stay quiet.
+    public mutating func update(_ newLevel: RiskLevel, at now: Double) -> RiskLevel? {
+        if newLevel != level { level = newLevel; levelSince = now }
+        let held = now - levelSince
+        if level == .none {
+            if held >= clearResetSeconds { spoken = .none }
+            return nil
+        }
+        guard held >= dwellSeconds else { return nil }
+        let rising = level > spoken
+        let repeatHigh = level == .high && now - lastSpoken >= repeatHighSeconds
+        guard rising || repeatHigh else { return nil }
+        spoken = max(spoken, level); lastSpoken = now
+        return level
+    }
+}
+
 /// Stateful smoothing + thresholds. Mirrors the constants block of SPINOSAURUS.py.
 public struct ScaleRiskTracker {
     /// Real size of the sterile catheter tip as seen by the camera (longest side). MEASURE YOURS.

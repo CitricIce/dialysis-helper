@@ -475,6 +475,24 @@ checks += [
         try expect(tracker.update(at(0)) == .high && tracker.distanceMM == 0, "Fingertip on the tip not HIGH at 0 mm")
         try expect(tracker.update(nil) == .none && tracker.current == .none, "Lost reference kept the warning")
     }),
+    ("Warning voice speaks once per rise, ignores flickers and drops, and repeats HIGH only every 8 s", {
+        var cues = WarningCuePolicy()
+        try expect(cues.update(.medium, at: 0) == nil, "Spoke before the 0.3 s dwell")
+        try expect(cues.update(.none, at: 0.1) == nil && cues.update(.medium, at: 0.2) == nil, "Flicker spoke")
+        try expect(cues.update(.medium, at: 0.6) == .medium, "Held MEDIUM not announced")
+        try expect(cues.update(.medium, at: 3) == nil, "MEDIUM repeated")
+        try expect(cues.update(.high, at: 3.1) == nil && cues.update(.high, at: 3.5) == .high, "Rise to HIGH not announced after dwell")
+        try expect(cues.update(.medium, at: 4) == nil && cues.update(.medium, at: 5) == nil, "Drop to MEDIUM spoke")
+        try expect(cues.update(.high, at: 6) == nil && cues.update(.high, at: 9) == nil, "HIGH repeated within 8 s")
+        try expect(cues.update(.high, at: 11.5) == .high, "Lasting HIGH not repeated after 8 s")
+        try expect(cues.update(.none, at: 12) == nil && cues.update(.medium, at: 12.5) == nil
+                   && cues.update(.medium, at: 12.9) == nil, "Brief clear started a new episode")
+        try expect(cues.update(.none, at: 13) == nil && cues.update(.none, at: 14.1) == nil
+                   && cues.update(.medium, at: 14.2) == nil && cues.update(.medium, at: 14.6) == .medium,
+                   "New episode after 1 s clear not announced")
+        cues.reset()
+        try expect(cues.update(.high, at: 20) == nil && cues.update(.high, at: 20.4) == .high, "Reset did not start fresh")
+    }),
     ("Warning distances default to 10/30 mm, are editable, and never overlap", {
         let keys = [WarningDistances.highKey, WarningDistances.mediumKey]
         let saved = keys.map { UserDefaults.standard.object(forKey: $0) }

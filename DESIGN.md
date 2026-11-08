@@ -1,5 +1,32 @@
 # ArmGuard PD: software and feedback design
 
+## Short spoken warnings that don't pile up (November 8)
+
+The old cues took 4–5 seconds to say but repeated every 4 seconds and cut each other off,
+so a hand near a boundary produced a stream of half-sentences. Now the **band and screen
+alert continuously** and the **voice only marks the danger getting worse**
+(`WarningCuePolicy` in `ProximityEngine.swift`, cues in `CoachSpeech.swift`):
+
+| | Before | Now |
+|---|---|---|
+| MEDIUM cue | "Medium risk. Your fingers are getting close to the sterile tip. Slow down and keep a gap." | **"Careful, too close."** |
+| HIGH cue | "High risk. Stop. Move your fingers away from the sterile tip now." | **"Stop. Hands back."** |
+| When it speaks | On any rise, and HIGH every 4 s | Once when the level rises and holds **0.3 s** (flickers stay quiet) |
+| HIGH while it lasts | Repeated every 4 s | Repeated every **8 s** |
+| HIGH back to MEDIUM | Could speak | **Silent** |
+| New episode | Immediately after any clear frame | Only after the hand has been clear for **1 s** |
+
+- Band patterns, banners, phone haptics and the red border are unchanged.
+- The cues are still pre-recorded with Cartesia Sonic when voice is configured (keyed by
+  text, so the new lines are recorded automatically) and fall back to the built-in voice.
+- Fewer cues also means fewer interruptions of an active Cartesia conversation.
+- The LiDAR monitoring cue (experimental mode only) uses the same short MEDIUM line.
+- Earlier sections quoting the long cues or the 4 s repeat are superseded by this one.
+- **Verified:** 45 portable checks (new check: dwell, flicker, drop, 8 s repeat, clear
+  reset, reset), 16 gateway tests, project membership, and all app sources type-checked
+  against Mac Catalyst frameworks. **Not verified:** iPhone SDK build and how the cues
+  sound and feel during a real practice.
+
 ## Smaller, editable warning zones: HIGH 10 mm, MEDIUM 30 mm (November 8)
 
 The red high-risk circle was far too big. **The old high-risk distance is now the
@@ -9,7 +36,7 @@ medium-risk distance**, and both are editable in the app (`WarningDistances` in
 | Level | Was | Now (default) | Feedback (unchanged) |
 |---|---|---|---|
 | HIGH RISK | within 30 mm | **within 10 mm** | red banner, continuous band, repeated voice cue |
-| MEDIUM RISK | within 80 mm | **within 30 mm** | orange banner, pulsing band, "getting close" cue |
+| MEDIUM RISK | within 80 mm | **within 30 mm** | orange banner, pulsing band, short voice cue (see above) |
 
 - **Where to change them:** the home **Connectors** tile, the ruler chip in Live Guard's
   top bar, or gear → Settings → Connector tips → **Warning zones**. Each level has a

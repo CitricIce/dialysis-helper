@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		80538CC7232138D59DDF40A0 /* ArmGuardCaptureProbe/ModelDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 221B1DFCBFF44A53F442E62C; };
 		8429D897A5BA38A28929B8C5 = {isa = PBXBuildFile; fileRef = 0DBDF9922834E9D620397A56; };
 		478EC277E26FEB8C970E4A90 = {isa = PBXBuildFile; fileRef = 98330B3B5D7FBA01C92EBE06; };
 		989E066A61AD945A0F6CE376 = {isa = PBXBuildFile; fileRef = 322DCD301EDE12C296D41E0E; };
@@ -28,6 +29,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		221B1DFCBFF44A53F442E62C /* ArmGuardCaptureProbe/ModelDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/ModelDebugView.swift; sourceTree = "<group>"; };
 		0DBDF9922834E9D620397A56 = {isa = PBXFileReference; lastKnownFileType = text; path = ArmGuardCaptureProbe/Resources/VoiceInstructions.txt; sourceTree = "<group>"; };
 		98330B3B5D7FBA01C92EBE06 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Sources/CaptureProbeCore/CartesiaProtocol.swift; sourceTree = "<group>"; };
 		322DCD301EDE12C296D41E0E = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/RFDETRDetector.swift; sourceTree = "<group>"; };
@@ -65,6 +67,7 @@
 		807C382AB49A9BFF2D00E986 = {
 			isa = PBXGroup;
 			children = (
+				221B1DFCBFF44A53F442E62C /* ArmGuardCaptureProbe/ModelDebugView.swift */,
 				0DBDF9922834E9D620397A56,
 				98330B3B5D7FBA01C92EBE06,
 				322DCD301EDE12C296D41E0E,
@@ -167,6 +170,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				80538CC7232138D59DDF40A0 /* ArmGuardCaptureProbe/ModelDebugView.swift in Sources */,
 				478EC277E26FEB8C970E4A90,
 				989E066A61AD945A0F6CE376,
 				308F791C4F9B9DF6A3204CBC /* ArmGuardCaptureProbe/CoachVisionPipeline.swift in Sources */,

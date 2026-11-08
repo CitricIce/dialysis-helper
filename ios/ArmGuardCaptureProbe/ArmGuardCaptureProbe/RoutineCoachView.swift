@@ -9,6 +9,8 @@ struct RoutineCoachView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSettings = false
     @State private var showCapture = false
+    @State private var showModelDebug = false
+    @State private var debugCheckID = ""
     @State private var showTyping = false
     @State private var showReset = false
 
@@ -72,12 +74,24 @@ struct RoutineCoachView: View {
                             }
                         }
                     } else { Text(coach.message) }
+                    Button {
+                        coach.backgrounded(); showModelDebug = true
+                    } label: {
+                        Label("Test camera + model", systemImage: "viewfinder")
+                            .frame(maxWidth: .infinity)
+                    }.buttonStyle(.bordered).controlSize(.large)
+                    Text("Run detection without voice or routine checks.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    if coach.debugControlsEnabled, let session = coach.session {
+                        debugNavigation(session)
+                    }
                 }.padding(24)
             }
             .navigationTitle("ArmGuard").navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .top) { riskBanner.padding(.horizontal) }
             .sheet(isPresented: $showSettings) { settings }
             .sheet(isPresented: $showCapture) { CaptureProbeView() }
+            .fullScreenCover(isPresented: $showModelDebug) { ModelDebugView() }
             .sheet(isPresented: $showTyping) {
                 NavigationStack {
                     Form {
@@ -219,10 +233,17 @@ struct RoutineCoachView: View {
                 }
                 Section {
                     DisclosureGroup("Developer tools") {
+                        Button("Camera + model test (no voice)") {
+                            coach.backgrounded(); showSettings = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showModelDebug = true }
+                        }
                         Button("Camera and depth test") {
                             coach.backgrounded(); showSettings = false
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showCapture = true }
                         }
+                        Toggle("Routine debug controls", isOn: $coach.debugControlsEnabled)
+                        Text("Shows skip and jump controls on the main screen. Skips are logged as unverified debugging. Camera readiness and contact-review gates still apply.")
+                            .font(.footnote)
                         Text(coach.diagnostics).font(.caption.monospaced()).textSelection(.enabled)
                         ShareLink(item: coach.diagnostics) { Text("Share diagnostics") }
                         if let url = coach.logURL { ShareLink(item: url) { Text("Share practice log") } }
@@ -232,6 +253,26 @@ struct RoutineCoachView: View {
                 }
             }.navigationTitle("Voice and wristband")
                 .toolbar { Button("Done") { showSettings = false } }
+        }
+    }
+    private func debugNavigation(_ session: RoutineSession) -> some View {
+        GroupBox("Routine debugging") {
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("Jump to step", selection: $debugCheckID) {
+                    Text("Choose a step").tag("")
+                    ForEach(session.template.checks) { check in Text(check.title).tag(check.id) }
+                }
+                Button("Jump to selected step") { coach.debugJump(to: debugCheckID) }
+                    .disabled(debugCheckID.isEmpty || session.reviewRequired)
+                Button("Skip current step") { coach.debugSkipStep() }
+                    .disabled(session.phase == .idle || session.phase == .completed || session.phase == .preparationOnly || session.reviewRequired)
+                Text("You can also say ‘skip this step’ during voice practice. Debug navigation does not complete a check or start monitoring.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if session.reviewRequired {
+                    Text("A contact-review flag cannot be bypassed. Use the separate camera + model test for detection debugging.")
+                        .font(.caption)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
     private func binding<Object: AnyObject, Value>(to object: Object,

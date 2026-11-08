@@ -1,5 +1,35 @@
 # Handoff: hand-to-sterile-tip proximity warnings (RF-DETR + vibration band)
 
+## Camera-only debugging, November 8, 2026
+
+The home screen now has **Test camera + model** without voice setup. It runs the
+bundled RF-DETR + Apple fingertips + sceneDepth in `ModelDebugController`, with
+paired analysed-frame boxes, class confidence, threshold control, fingertip dots,
+model status, result rate, processing duration and frame age/depth diagnostics.
+It has no speech, routine or band client; parent voice/monitoring pauses on entry.
+Stop/Done/background cancels capture. Permission callbacks are cancelled logically
+on Stop, preventing a late grant from reopening a closed test. Debug gaps expire
+at 250 ms; boxes dim/mark stale at one second or Stop. Production confidence stays
+45%; debug settings are separate. Preview rendering adds debug-only work beyond
+the reported inference pipeline time; source-frame age includes delivery/rendering.
+
+Developer tools > **Routine debug controls** enables manual jump/skip on the main
+screen and explicit spoken skip phrases. Moves log unverified debug evidence,
+clear pending read-backs and never complete checks or arm monitoring. Review
+flags stay latched. Voice reconnects after debug navigation only if already on.
+Pause/resume/end/debug-skip commands dispatch natively on a real received user
+transcript; late matching tool calls acknowledge state without repeating them.
+Pause now interrupts the speaking agent. Instructions/state expose debug mode.
+No server or account/agent reconfiguration is needed for camera-only testing.
+
+Checks passed: 29 portable logic checks, 13 gateway/setup tests, project/source
+membership and all 16 Swift files type-checked against actual Catalyst frameworks.
+No iPhone SDK build or physical phone test was possible here. Rebuild and follow
+[the camera/model test matrix](ios/ArmGuardCaptureProbe/README.md#camera--model-first-phone-test),
+including denied permissions, stopping/backgrounding, overlay alignment on real
+props and sustained frame age. Voice command/microphone latency still needs testing.
+Model weights, signing settings and firmware are unchanged by this update.
+
 ## Integration review, November 7, 2026
 
 The newer working tree integrates commit `60595b5` with the hands-free Cartesia
@@ -33,6 +63,12 @@ section supersedes its decoder, warning-loop and voice-setup details.
 - Full Xcode/iPhone compilation, actual-prop detection accuracy, microphone/echo
   behavior and physical warning latency remain unverified in this workspace.
 
+
+## Historical teammate notes (superseded by the integration reviews above)
+
+The remaining notes preserve the original implementation/export history. Their
+uncalibrated 2D warning method, UI description, uncommitted status and build status
+are historical; do not use them as current setup or verification instructions.
 
 Paste into Claude Code: "Read HANDOFF.md and continue from Open work."
 

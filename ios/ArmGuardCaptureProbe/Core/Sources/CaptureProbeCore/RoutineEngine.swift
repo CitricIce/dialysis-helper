@@ -45,6 +45,7 @@ public struct RoutineSession {
     public private(set) var pendingReadBack: String?
     public private(set) var events: [RoutineEvent] = []
     public private(set) var reviewRequired = false
+    public private(set) var debugNavigationUsed = false
     private var pausedPhase: RoutinePhase = .checking
 
     public init(template: RoutineTemplate) throws {
@@ -160,6 +161,30 @@ public struct RoutineSession {
         phase = reviewRequired ? .reviewRequired : (pausedPhase == .monitoring ? .checking : pausedPhase)
     }
 
+    /// Developer navigation never records a completed check or arms monitoring.
+    public mutating func debugJump(to checkID: String) -> Bool {
+        guard template.practiceOnly, !reviewRequired,
+              let index = template.checks.firstIndex(where: { $0.id == checkID }) else { return false }
+        checkIndex = index
+        pendingReadBack = nil
+        phase = .checking
+        debugNavigationUsed = true
+        record("debug_step_jump", evidence: "unverified_debug_navigation")
+        return true
+    }
+
+    public mutating func debugSkipCurrentCheck() -> Bool {
+        guard template.practiceOnly, !reviewRequired, currentCheck != nil,
+              phase == .checking || phase == .paused || phase == .monitoring else { return false }
+        record("debug_step_skipped", evidence: "unverified_debug_navigation")
+        debugNavigationUsed = true
+        pendingReadBack = nil
+        checkIndex += 1
+        phase = checkIndex < template.checks.count ? .checking : .completed
+        if phase == .completed { record("debug_finished", evidence: "unverified_debug_navigation") }
+        return true
+    }
+
     private mutating func advance(evidence: String) {
         record("check_recorded", evidence: evidence)
         pendingReadBack = nil
@@ -177,7 +202,7 @@ public struct RoutineSession {
 }
 
 public enum VoiceIntent: Equatable {
-    case pause, resume, endSession, repeatPrompt, help, askQuestion, confirm, arm, skipCamera, readLabel, finishPreparation, finishMonitoring, answer(String)
+    case pause, resume, endSession, repeatPrompt, help, askQuestion, confirm, arm, skipCamera, skipStep, readLabel, finishPreparation, finishMonitoring, answer(String)
     public static func normalize(_ text: String) -> String {
         text.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }.joined(separator: " ")
@@ -191,7 +216,8 @@ public enum VoiceIntent: Equatable {
     }
     public static func parse(_ text: String) -> VoiceIntent {
         switch normalize(text) {
-        case "pause", "stop", "pause routine", "stop routine", "wait", "hold on", "give me a minute": return .pause
+        case "pause", "stop", "pause routine", "stop routine", "wait", "hold on", "give me a minute",
+             "please pause", "pause please", "can you pause", "can we pause", "let s pause", "pause the routine": return .pause
         case "resume", "continue", "let s continue", "i m back", "let s keep going": return .resume
         case "end session", "end the session", "stop listening", "goodbye": return .endSession
         case "repeat", "repeat that", "say that again", "what did you say": return .repeatPrompt
@@ -200,6 +226,7 @@ public enum VoiceIntent: Equatable {
         case "confirm", "i confirm": return .confirm
         case "start monitoring", "arm monitoring", "start watching", "let s connect", "ready to connect": return .arm
         case "continue without camera", "continue without the camera", "skip the camera step": return .skipCamera
+        case "skip", "skip ahead", "skip step", "skip this step", "skip this", "next step", "go to the next step", "please skip this step": return .skipStep
         case "read the label", "read my bag", "scan the label": return .readLabel
         case "finish preparation practice", "finish setup": return .finishPreparation
         case "finish monitoring", "finish connection practice", "i m connected", "i ve connected it", "i m disconnected", "i ve disconnected it": return .finishMonitoring

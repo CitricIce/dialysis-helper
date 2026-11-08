@@ -3,7 +3,16 @@ import CoreImage
 import CoreML
 import Vision
 
+struct CoachDetectedObject {
+    let label: String
+    let confidence: Float
+    let role: DetectionRole
+    let region: ProtectedRegion // native sensor coordinates
+}
+
 struct CoachVisionSnapshot {
+    var detections: [CoachDetectedObject] = []
+    var debugImage: CGImage?
     var fingertips: [SensorPoint] = []
     var regions: [ProtectedRegion] = []
     var provider = "Apple Vision"
@@ -39,6 +48,16 @@ final class CoachVisionPipeline {
     private var scaleTracker = ScaleRiskTracker() // diagnostic only; no default physical size
     private var resetTracker = false
     private var labelRoles: [String: DetectionRole] = [:]
+    private var minimumConfidence: Float = 0.45 // protected by lock
+    private let includeDebugPreview: Bool
+    private lazy var debugRenderer = FrameRenderer() // worker queue only
+
+    init(includeDebugPreview: Bool = false) { self.includeDebugPreview = includeDebugPreview }
+
+    func setConfidenceThreshold(_ value: Float) {
+        guard value.isFinite else { return }
+        lock.lock(); minimumConfidence = max(0.05, min(0.95, value)); lock.unlock()
+    }
 
     private func classify(_ raw: String) -> DetectionRole {
         labelRoles[raw] ?? DetectionLabels.role(for: raw)
@@ -68,11 +87,16 @@ final class CoachVisionPipeline {
         wantsOCR = false
         let freshTracker = resetTracker
         resetTracker = false
+        let confidence = minimumConfidence
         lock.unlock()
         worker.async { [weak self] in
             guard let self else { return }
             if freshTracker { self.scaleTracker.reset() }
-            let output = autoreleasepool { self.process(frame, receipt: now, scanLabel: scan) }
+            let output = autoreleasepool { () -> CoachVisionSnapshot in
+                var output = self.process(frame, receipt: now, scanLabel: scan, confidence: confidence)
+                if self.includeDebugPreview { output.debugImage = self.debugRenderer.colorPreview(frame) }
+                return output
+            }
             DispatchQueue.main.async {
                 self.lock.lock()
                 let publish = self.active && self.generation == token
@@ -106,7 +130,7 @@ final class CoachVisionPipeline {
         } catch { modelError = "Model failed to load: \(error.localizedDescription)" }
     }
 
-    private func process(_ frame: ARFrame, receipt: Double, scanLabel: Bool) -> CoachVisionSnapshot {
+    private func process(_ frame: ARFrame, receipt: Double, scanLabel: Bool, confidence: Float) -> CoachVisionSnapshot {
         let started = ProcessInfo.processInfo.systemUptime
         loadModelIfNeeded()
         var result = CoachVisionSnapshot()
@@ -118,7 +142,7 @@ final class CoachVisionPipeline {
             // Every detector is normalized to Vision coordinates: portrait, bottom-left origin.
             var detections: [(name: String, confidence: Float, box: CGRect)] = []
             if let rfdetr {
-                detections = try rfdetr.detect(frame.capturedImage).map { found in
+                detections = try rfdetr.detect(frame.capturedImage, threshold: confidence).map { found in
                     (name: found.className, confidence: found.confidence,
                      box: CGRect(x: found.box.minX, y: 1 - found.box.maxY, width: found.box.width, height: found.box.height))
                 }
@@ -137,9 +161,15 @@ final class CoachVisionPipeline {
             }
             do {
                 for object in detections {
-                    guard object.confidence >= 0.45 else { continue } // CONFIDENCE_THRESH
+                    guard object.confidence >= confidence else { continue }
                     let kind = classify(object.name)
                     let b = object.box
+                    let region = ProtectedRegion(x: Double(1 - b.maxY), y: Double(1 - b.maxX),
+                                                 width: Double(b.height), height: Double(b.width))
+                    if region.isValid {
+                        result.detections.append(CoachDetectedObject(label: object.name, confidence: object.confidence,
+                                                                    role: kind, region: region))
+                    }
                     if kind == .hand {
                         let left = max(0, min(1, Double(1 - b.maxY)))
                         let top = max(0, min(1, Double(1 - b.maxX)))

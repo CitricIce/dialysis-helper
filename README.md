@@ -13,7 +13,9 @@ the iPhone; the earlier Mac/Continuity Camera stack remains an alternative.
 The [native iPhone prototype](ios/ArmGuardCaptureProbe/README.md) now includes
 practice routines, on-device hand tracking, label OCR, a Core ML detector adapter,
 BLE feedback and a continuous Cartesia voice conversation with a phone-voice
-fallback. The camera/LiDAR test is under Developer tools in setup. The teammate's
+fallback. Use **Test camera + model** on the home screen to run detection without voice,
+routine checks or vibration. It needs no Cartesia key or internet. The original
+camera/LiDAR hardware test is under Developer tools in setup. The teammate's
 RF-DETR Small protected-tip model is included and compiled by Xcode. Its detection
 accuracy and usable latency still need testing on actual props. No printed markers
 are needed for these tests.
@@ -36,6 +38,26 @@ Internet is required for Cartesia. The [gateway](services/voice_gateway/README.m
 is optional for a future hosted setup that keeps a shared provider key off devices.
 Conversation also needs Managed Agents access. The included setup command creates
 the dedicated agent and tools through the API without the account owner's login. Live agent creation, voice generation, streaming audio and a synthetic spoken-reply/tool loop have passed. Physical iPhone audio and latency still need testing.
+
+## Camera-only debugging (November 8, 2026)
+
+After rebuilding, tap **Test camera + model**. It starts the actual bundled
+RF-DETR detector and Apple fingertips, showing boxes, class confidence, LiDAR
+status, completed-result rate and frame age. Boxes use the exact analysed frame.
+A confidence slider affects only this test; stale results are marked and dimmed.
+Stop/Done/backgrounding stops capture, and returning does not restart voice.
+
+For routine testing, open the gear menu > **Developer tools** > **Routine debug
+controls**. The main screen then offers a step picker, jump and skip. You can say
+“skip this step” in voice practice with that toggle on. Debug moves are logged as
+unverified; they never complete checks, arm monitoring or clear contact review.
+Pause/resume/end/debug-skip phrases are handled by native code on the received
+user transcript rather than waiting for an agent tool call. Pausing interrupts
+assistant playback. Physical microphone timing still needs testing.
+
+Local checks passed: 29 portable logic checks, 13 gateway/setup tests, project
+validation and all 16 Swift files type-checked against Apple Catalyst frameworks.
+An iPhone SDK build and this screen's physical-phone behavior remain unverified.
 
 ## Check before installing
 

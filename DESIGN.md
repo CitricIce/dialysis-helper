@@ -1,6 +1,6 @@
 # ArmGuard PD: software and feedback design
 
-Status: prototype source updated November 7, 2026. The
+Status: prototype source updated November 8, 2026. The
 [native iPhone app](ios/ArmGuardCaptureProbe/README.md) now has practice routines,
 hand tracking, OCR, a Core ML detector adapter, BLE and voice integrations.
 The teammate's RF-DETR Small model is now bundled; real-photo accuracy and iPhone latency remain unverified.
@@ -14,6 +14,40 @@ tracking, risk, BLE and audio on the iPhone. The native plan below supersedes th
 earlier Mac-primary execution/stack sections, which are retained as alternatives.
 Prop geometry, exposure rules and bench-validation requirements apply to either
 implementation. [README.md](README.md) documents existing firmware and wiring.
+
+## Camera-only and routine debugging (November 8)
+
+**Test camera + model** on the home screen opens an independent controller with
+ARKit capture and the actual bundled detector/Apple fingertips. It owns no speech,
+conversation, routine or BLE client. The parent coach pauses and cancels voice
+work on entry; leaving the test does not resume it. Capture stops on Done or
+backgrounding. A stopped permission request cannot later start the camera.
+
+Debug snapshots include class/score/role/region plus an RGB preview made from the
+same analysed ARFrame. Overlays therefore follow completed inference instead of
+being painted over a newer camera frame. Confidence defaults to 45%; the slider
+and display toggles affect only this test. Model status, completed-result rate,
+processing time, source-frame age, depth availability and provisional gaps are
+visible without arming. Gaps expire at 250 ms; debug boxes dim/mark stale above
+one second or when stopped. There is no haptic/audio warning in this screen.
+One-in-flight work remains bounded. Extra paired-preview rendering is outside the
+reported inference-pipeline duration; frame age includes it. Neither is a measured
+physical alert latency. Real props and iPhone thermal testing remain necessary.
+
+Developer tools also exposes an off-by-default **Routine debug controls** toggle.
+Manual jump/skip does not depend on the agent. Core navigation clears pending
+read-backs, stops monitoring, logs unverified debug events and never records
+completion evidence or arms monitoring. Review flags cannot be bypassed. An
+active voice call reconnects at the selected step; silent navigation stays silent.
+Pause/resume/end/debug-skip phrases are dispatched natively from the latest real
+user transcript, once. Late tool acknowledgments do not repeat the action. Pause
+interrupts assistant playback. Native tool state reports debug flags; instructions
+ask the agent to respect them. This still depends on speech/turn-end delivery.
+
+Validation: 29 portable logic checks, 13 gateway/setup tests, Xcode membership and
+all 16 Swift sources type-checked against Apple Catalyst frameworks passed.
+An iPhone SDK build, device UI/lifecycle, actual-prop accuracy and command/audio
+behavior remain unverified here. See the [phone test guide](ios/ArmGuardCaptureProbe/README.md).
 
 ## Current iteration: routines and dynamic voice
 
@@ -73,8 +107,9 @@ or a mask is worn. No such visual check is claimed. The incoming image-scale war
 
 ### Hands-free voice setup and recovery
 
-The main screen has a single start action and the current spoken step; setup and
-camera/depth diagnostics live in the gear menu. Direct phone-to-Cartesia access is the default. A test user enters an authorized
+The main screen has a practice start action, current spoken step and direct
+camera/model test entry. Setup, routine debug controls and the original camera/depth
+hardware diagnostics live in the gear menu. Direct phone-to-Cartesia access is the default. A test user enters an authorized
 API key once; it persists in the device Keychain, with nonsecret voice/agent IDs
 in preferences. No key is embedded in the app and no laptop process is required.
 Internet is required for conversation. A hosted credential gateway remains an
@@ -83,9 +118,9 @@ agent and its tools through `setup_agent.py`; the account owner's login is not
 needed for the integration. Billing and API permissions remain account dependencies.
 See [voice setup](services/voice_gateway/README.md).
 
-Microphone audio streams to Cartesia only after explicit consent. User transcripts
-can reach native routine controls through the two client tools; assistant speech
-cannot. One actual user turn may be consumed once for the matching current check.
+Microphone audio streams to Cartesia only after explicit consent. Actual user transcripts
+reach native routine controls through the two client tools, with direct native
+dispatch for pause/resume/end/debug-skip. Assistant speech cannot drive them. One actual user turn may be consumed once for the matching current check.
 The agent cannot clear review flags or alter prescriptions. The camera and band
 run locally. Immediate alerts interrupt the cloud call and play cached Cartesia
 audio, falling back to phone speech if needed. On finishing that cue, the app opens
@@ -234,7 +269,8 @@ clean exchange.
 
 The implementation in `ios/ArmGuardCaptureProbe/` now includes the ARKit capture
 test, paired RGB/depth, bundled RF-DETR, Apple fingertips, routines, direct voice
-and band output. The standalone capture test remains in Developer tools. The
+and band output. Camera/model-only testing is on the home screen; the original
+hardware-only capture test remains in Developer tools. The
 AVFoundation and marker options below are alternatives, not required next steps.
 
 The current app runs inference locally and targets the iPhone 15 Pro setup.
@@ -260,7 +296,7 @@ local vision/alert path. Dynamic voice connects directly to Cartesia by default;
 
 | Layer | Native choice | Design consequence |
 | --- | --- | --- |
-| App/UI | Swift + SwiftUI, native camera preview/overlay | One spoken-step screen; voice-driven checks, native readiness/review gates, setup and diagnostics behind a gear menu |
+| App/UI | Swift + SwiftUI, native camera preview/overlay | Spoken-step screen plus direct camera/model test; debug step picker and native readiness/review gates; setup behind a gear menu |
 | Earlier RGB/depth option | AVFoundation video/depth outputs and AVCaptureDataOutputSynchronizer | Process paired frames with timestamps and calibration; begin from Apple's capture sample |
 | Hand model | Vision VNDetectHumanHandPoseRequest, maximumHandCount=2 | Built-in hand-pose detection; no custom training or Python runtime; validate this detector rather than assuming MediaPipe results transfer |
 | Alternative prop markers | ArUco via OpenCV iOS and a thin Objective-C++ bridge | Preserve existing marker IDs and measured prop profiles; native integration is work but requires no model training |
@@ -341,7 +377,7 @@ building a streaming protocol but adds native capture, UI and app lifecycle work
 5. Profile sustained operation and record physical warning-to-motor trials. Local
    logs and optional export follow; defer dashboard, clips and automatic step checks.
 
-Implemented modules include CaptureController, CoachVisionPipeline, RFDETRDetector,
+Implemented modules include ModelDebugView/ModelDebugController, CaptureController, CoachVisionPipeline, RFDETRDetector,
 CoachViewModel, CoachSpeech, CartesiaConversation and BandClient, with portable
 routine/proximity/protocol logic in Core. Pure Swift checks and the Mac model
 smoke test are available; recorded-frame replay and real camera/depth/BLE/motor

@@ -16,6 +16,28 @@ login. You need their authorized API key, a voice ID they like, and access/credi
 for Managed Agents as well as speech. Account or billing changes may still need
 the owner. Live API tests passed on November 7, 2026: authorized key/voice lookup, tool and agent creation, generated speech, WebSocket audio, and a synthetic spoken reply through both client tools. Phone microphone, echo suppression, interruptions and physical latency remain unverified.
 
+## Camera and routine debugging (November 8, 2026)
+
+Camera-only testing needs no gateway, Cartesia credentials or voice session.
+Rebuild and tap **Test camera + model** on the home screen. It runs the actual
+bundled detector, fingertip tracking and depth with boxes/confidence/timing; it
+pauses the parent coach and produces no voice or vibration warnings.
+
+Enable **Routine debug controls** under Developer tools to jump/skip manually
+without agent approval, or say “skip this step” during voice practice. Native code
+handles pause/resume/end/debug-skip directly from actual user transcripts. Late
+tool calls acknowledge the resulting state without applying commands twice.
+`get_routine_state` exposes `debug_controls_enabled` and `debug_navigation_used`.
+Debug skips are logged as unverified, do not complete checks/arm monitoring and
+cannot bypass contact review. The bundled `VoiceInstructions.txt` is updated;
+no new agent/tool IDs or account login are needed. Optional deployed gateways
+must use the updated instructions file; direct phone mode gets it with the build.
+
+Local validation: 29 portable checks, 13 gateway/setup tests, project validation
+and 16 Swift files type-checked against Catalyst frameworks passed. Camera UI,
+physical speech/interruptions and iPhone SDK compilation remain unverified here.
+See the [phone test instructions](../../ios/ArmGuardCaptureProbe/README.md).
+
 ## One-time setup on the Mac
 
 Copy `.env.example` to `.env` in this directory. Fill in `CARTESIA_API_KEY`,
@@ -52,8 +74,8 @@ practice** before preparing your hands. Thereafter, say done, ask a question,
 pause, resume, repeat, read the label, or end session. Bag details and protected
 openings need a read-back followed by a separate confirmation. The app records
 self-reports; it does not verify a prescription or clean technique. Readiness for
-camera monitoring stays under native control. While the model is absent, explicitly
-saying **continue without camera** advances an unmonitored practice step; it never
+camera monitoring stays under native control. The model is bundled, but when
+monitoring is unavailable, explicitly saying **continue without camera** advances an unmonitored practice step; it never
 records that step as monitored. A possible-contact review flag cannot be bypassed
 this way.
 
@@ -86,7 +108,8 @@ measured on hardware here.
 - `get_routine_state`: native client tool, no arguments, returns current state.
 - `respond_to_check`: native client tool, `check_id` and verbatim `user_words`.
   The app requires a matching unused user transcript for the current check.
-  Assistant speech, invented consent, stale steps and duplicate replies are rejected.
+  Assistant speech, invented consent and stale replies are rejected. A matching
+  late native-command tool call returns current state without repeating the action.
 
 No tool clears review flags, configures prescriptions, or changes clinical
 instructions. Generated explanations remain unvalidated. Event logs omit spoken

@@ -23,7 +23,9 @@ final class CoachViewModel: ObservableObject {
     }
     @Published private(set) var voiceEnabled = false
     @Published private(set) var ended = false
+    @Published var debugControlsEnabled = false
     private var replyGate = SpokenReplyGate()
+    private var nativeCommand: (checkID: String, words: String)?
     private var resumeCloudAfterCue = false
     @Published private(set) var message = "Set up your voice, then start when you're ready."
     @Published private(set) var scannedLabel = ""
@@ -68,10 +70,16 @@ final class CoachViewModel: ObservableObject {
             self.speech.speak(self.message, urgent: true)
         }
         conversation.onUserUtterance = { [weak self] text, turn in
-            guard let self else { return }
+            guard let self, self.voiceEnabled, !self.ended else { return }
             self.replyGate.receive(text, turn: turn)
-            // Stop the band immediately on an explicit pause, without waiting for an LLM tool.
-            if VoiceIntent.parse(text) == .pause { self.pause() }
+            // These commands belong to the app, and do not wait for an agent tool call.
+            let intent = VoiceIntent.parse(text)
+            if [.pause, .resume, .endSession, .skipStep].contains(intent) {
+                let checkID = self.session?.currentCheck?.id ?? "finished"
+                guard self.replyGate.consume(text, expectedCheckID: checkID, currentCheckID: checkID) != nil else { return }
+                self.nativeCommand = (checkID, VoiceIntent.normalize(text))
+                self.handle(text)
+            } else { self.nativeCommand = nil }
         }
         conversation.onTool = { [weak self] name, parameters in
             self?.runTool(name, parameters: parameters) ?? ("Routine unavailable", true)
@@ -152,7 +160,7 @@ final class CoachViewModel: ObservableObject {
         guard voiceEnabled, voiceConfigured, let session,
               let request = speech.agentSessionRequest(checkID: session.currentCheck?.id ?? "finished",
                   phase: session.phase, prompt: currentPrompt, checks: session.template.checks) else { return }
-        speech.stop(); replyGate = SpokenReplyGate()
+        speech.stop(); replyGate = SpokenReplyGate(); nativeCommand = nil
         conversation.start(request: request)
     }
     func reset() {
@@ -189,6 +197,9 @@ final class CoachViewModel: ObservableObject {
             if session?.continueWithoutCamera() == true {
                 band.stop(); persist(); say("We'll continue this practice without camera monitoring. " + currentPrompt)
             } else { say(currentPrompt) }
+        case .skipStep:
+            if debugControlsEnabled { debugSkipStep() }
+            else { say("To skip steps while testing, turn on routine debug controls in Developer tools.") }
         case .readLabel: scanLabel()
         case .finishPreparation: finishPreparation()
         case .finishMonitoring: finishMonitoring()
@@ -216,6 +227,8 @@ final class CoachViewModel: ObservableObject {
             "help": session?.currentCheck?.help ?? "Follow your dialysis team's written instructions.",
             "camera_ready": canArm, "review_required": session?.reviewRequired ?? false,
             "pending_read_back": session?.pendingReadBack ?? "",
+            "debug_controls_enabled": debugControlsEnabled,
+            "debug_navigation_used": session?.debugNavigationUsed ?? false,
             "visible_label_text": String(scannedLabel.prefix(800)),
             "self_report_only": true]
         if let error { state["error"] = error }
@@ -224,6 +237,11 @@ final class CoachViewModel: ObservableObject {
     }
     private func runTool(_ name: String, parameters: [String: Any]) -> (String, Bool) {
         if name == "get_routine_state" { return stateResult() }
+        // A late tool call acknowledges the native command, without applying it twice.
+        if name == "respond_to_check", let nativeCommand,
+           parameters["check_id"] as? String == nativeCommand.checkID,
+           let words = parameters["user_words"] as? String,
+           VoiceIntent.normalize(words) == nativeCommand.words { return stateResult() }
         guard name == "respond_to_check", let checkID = parameters["check_id"] as? String,
               let words = parameters["user_words"] as? String,
               let actual = replyGate.consume(words, expectedCheckID: checkID,
@@ -276,10 +294,27 @@ final class CoachViewModel: ObservableObject {
     }
     func pause() {
         session?.pause(); band.stop(); persist()
-        say("We're paused. Take your time. Say resume when you're ready.")
+        say("We're paused. Take your time. Say resume when you're ready.", urgent: true)
     }
     func resume() {
         session?.resume(); startCamera(); persist(); prompt()
+    }
+    func debugJump(to checkID: String) {
+        guard debugControlsEnabled, session?.debugJump(to: checkID) == true else { return }
+        didNavigateForDebug()
+    }
+    func debugSkipStep() {
+        guard debugControlsEnabled, session?.debugSkipCurrentCheck() == true else { return }
+        didNavigateForDebug()
+    }
+    private func didNavigateForDebug() {
+        band.stop(); conversation.stop(); speech.stop(); resumeCloudAfterCue = false
+        replyGate = SpokenReplyGate(); nativeCommand = nil
+        ended = false; scannedLabel = ""; persist()
+        message = "Debug step selected. " + currentPrompt
+        if voiceEnabled {
+            if voiceConfigured { connectVoice() } else { prompt() }
+        }
     }
     func endSession() {
         voiceEnabled = false; ended = true; resumeCloudAfterCue = false
@@ -307,7 +342,7 @@ final class CoachViewModel: ObservableObject {
     }
     private func pauseHardware() {
         vision.setActive(false); capture.stop(reason: "Camera paused")
-        band.stop(); speech.stop(); conversation.stop()
+        band.stop(); speech.suspend(); conversation.stop()
     }
     private func checkHealth() {
         guard session?.phase == .monitoring else { return }

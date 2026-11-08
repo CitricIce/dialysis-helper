@@ -32,6 +32,7 @@ final class CaptureController: NSObject, ObservableObject, ARSessionDelegate {
     private var healthTimer: Timer?
     private var rateBaseline = (time: 0.0, frames: 0, depth: 0)
     private var previewReceipt: Double?
+    private var permissionRequest: UUID?
 
     private struct PipelineState {
         var runID: UUID?
@@ -67,11 +68,14 @@ final class CaptureController: NSObject, ObservableObject, ARSessionDelegate {
         case .authorized:
             beginSession()
         case .notDetermined:
+            let request = UUID()
+            permissionRequest = request
             isStarting = true
             status = "Allow camera access to start the hardware test."
             AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
                 DispatchQueue.main.async {
-                    guard let self else { return }
+                    guard let self, self.permissionRequest == request else { return }
+                    self.permissionRequest = nil
                     self.isStarting = false
                     if granted {
                         self.beginSession()
@@ -129,6 +133,8 @@ final class CaptureController: NSObject, ObservableObject, ARSessionDelegate {
     }
 
     func stop(reason: String = "Stopped. Press Start for a new test.") {
+        permissionRequest = nil
+        isStarting = false
         withState { $0.runID = nil }
         session.pause()
         healthTimer?.invalidate()

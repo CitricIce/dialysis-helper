@@ -19,6 +19,10 @@ struct ProbeSnapshot {
 final class FrameRenderer {
     private let context = CIContext(options: [.cacheIntermediates: false])
 
+    func colorPreview(_ frame: ARFrame) -> CGImage? {
+        portraitImage(CIImage(cvPixelBuffer: frame.capturedImage), maximumDimension: 960)
+    }
+
     func render(_ frame: ARFrame) -> ProbeSnapshot {
         let started = ProcessInfo.processInfo.systemUptime
         let color = frame.capturedImage
@@ -26,7 +30,7 @@ final class FrameRenderer {
         result.frameTimestamp = frame.timestamp
         result.colorResolution = "\(CVPixelBufferGetWidth(color)) × \(CVPixelBufferGetHeight(color))"
         // The app is portrait-only. Both full sensor images are rotated, never independently cropped.
-        result.colorImage = portraitImage(CIImage(cvPixelBuffer: color), maximumDimension: 960)
+        result.colorImage = colorPreview(frame)
         if let depth = frame.sceneDepth {
             do {
                 let grid = try Self.copyGrid(depth)

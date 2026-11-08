@@ -2,7 +2,7 @@
 
 Nov 7, 2026 · @e
 
-> Current implementation, November 7, 2026: the foreground iPhone app runs camera,
+> Current implementation, November 8, 2026: the foreground iPhone app runs camera,
 > LiDAR, RF-DETR, Apple fingertip tracking, proximity rules and Bluetooth locally.
 > Cartesia conversation connects directly from the phone using a key entered once
 > and stored in Keychain. A laptop is needed for development/install, not operation.
@@ -11,6 +11,27 @@ Nov 7, 2026 · @e
 > contains setup and verification steps. Clinical protocol, real-prop accuracy and
 > physical iPhone warning latency remain unvalidated. Dashboard, scores and clips
 > are future product ideas, not current functionality.
+
+## Current testing flow
+
+The home screen's **Test camera + model** runs the bundled detector and Apple
+fingertips without voice, routine checks or vibration. It shows confidence, boxes
+on the exact analysed frame, fingertip dots, depth availability and timing/frame
+age. No Cartesia key, internet or printed marker is needed. Stop/Done/background
+stops capture. This tests detections; it does not declare a surface sterile.
+
+For routine debugging, enable **Routine debug controls** in Developer tools to
+jump/skip steps manually or say “skip this step”. Debug navigation is logged as
+unverified, never completes a check or arms monitoring, and cannot clear contact
+review. Explicit pause/resume/end/debug-skip commands are handled from real user
+transcripts by native code without waiting for the agent's tool decision. Pause
+interrupts playback. Recognition timing and conversation behavior still need phone
+tests. See [the app testing guide](ios/ArmGuardCaptureProbe/README.md).
+
+November 8 local verification passed 29 portable logic checks, 13 gateway/setup
+tests, project validation and all 16 Swift files type-checked against Apple
+Catalyst frameworks. This is not an iPhone build, real-prop accuracy result or
+physical latency measurement; those still require the device and full Xcode.
 
 ## Summary
 

@@ -98,6 +98,48 @@ func readyForMonitoring() throws -> RoutineSession {
     return session
 }
 checks += [
+    ("Debug jumps discard read-backs and never complete or arm a check", {
+        var session = try RoutineSession(template: practiceTemplate())
+        session.start(); _ = session.submit("done")
+        _ = session.submit("Practice bag product strength volume expiry")
+        try expect(session.pendingReadBack != nil, "Missing read-back fixture")
+        let monitor = session.template.checks.first { $0.responseKind == .monitoring }!
+        let previousRecords = session.events.filter { $0.kind == "check_recorded" }.count
+        try expect(session.debugJump(to: monitor.id), "Debug jump rejected")
+        try expect(session.phase == .checking && session.pendingReadBack == nil && session.debugNavigationUsed,
+                   "Jump retained evidence or armed monitoring")
+        try expect(!session.armMonitoring(visionReady: false), "Debug bypassed camera readiness")
+        try expect(session.events.filter { $0.kind == "check_recorded" }.count == previousRecords,
+                   "Jump recorded a completed check")
+        let previousIndex = session.checkIndex
+        try expect(!session.debugJump(to: "unknown") && session.checkIndex == previousIndex, "Unknown jump mutated state")
+        try expect(session.events.last?.kind == "debug_step_jump", "Debug navigation not logged separately")
+    }),
+    ("Debug skips and completion stay unverified and cannot bypass contact review", {
+        var session = try readyForMonitoring()
+        _ = session.armMonitoring(visionReady: true)
+        try expect(session.debugSkipCurrentCheck() && session.phase == .checking, "Monitoring skip stayed armed")
+        let last = session.template.checks.last!
+        try expect(session.debugJump(to: last.id) && session.debugSkipCurrentCheck(), "Final debug skip failed")
+        try expect(session.phase == .completed && session.events.last?.kind == "debug_finished", "Debug finish represented as normal completion")
+        var flagged = try readyForMonitoring()
+        _ = flagged.armMonitoring(visionReady: true); flagged.flagPossibleContact(); flagged.pause()
+        try expect(!flagged.debugSkipCurrentCheck() && !flagged.debugJump(to: last.id) && flagged.reviewRequired,
+                   "Debug navigation cleared review")
+        var idle = try RoutineSession(template: practiceTemplate())
+        try expect(!idle.debugSkipCurrentCheck(), "Idle routine skipped before starting")
+    }),
+    ("Natural pause and debug skip commands require explicit phrases", {
+        for words in ["please pause", "Can you pause?", "let's pause", "pause the routine"] {
+            try expect(VoiceIntent.parse(words) == .pause, "Pause phrase missed: \(words)")
+        }
+        for words in ["skip this step", "next step", "skip ahead"] {
+            try expect(VoiceIntent.parse(words) == .skipStep, "Debug command missed: \(words)")
+        }
+        for words in ["don't pause", "don't skip this step", "why would I skip this step?"] {
+            try expect(VoiceIntent.parse(words) == .answer(words), "Substring triggered command: \(words)")
+        }
+    }),
     ("Questions and uncertainty hold the step; natural completion is self-report", {
         var session = try RoutineSession(template: practiceTemplate())
         session.start()

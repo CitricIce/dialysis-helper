@@ -30,7 +30,6 @@ final class RFDETRDetector {
     private let features: MLDictionaryFeatureProvider
     private let mean: [Float] = [0.485, 0.456, 0.406]
     private let std: [Float] = [0.229, 0.224, 0.225]
-    let threshold: Float = 0.45
 
     var summary: String {
         let names = classNames.sorted { $0.key < $1.key }.map(\.value).joined(separator: ", ")
@@ -117,7 +116,7 @@ final class RFDETRDetector {
         return input
     }
 
-    func detect(_ buffer: CVPixelBuffer) throws -> [Detection] {
+    func detect(_ buffer: CVPixelBuffer, threshold: Float = 0.45) throws -> [Detection] {
         _ = try prepareInput(buffer)
         let output = try model.prediction(from: features)
         guard let pair = outputs(output) else { throw CocoaError(.coderInvalidValue) }

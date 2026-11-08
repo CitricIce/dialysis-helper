@@ -1,15 +1,18 @@
 # ArmGuard native practice coach and capture test
 
-The existing Xcode project now has two tabs. **Capture test** preserves the original
-RGB/LiDAR hardware milestone. **Practice coach** adds routine checks, Apple hand
-tracking, optional custom fingertips/protected-part detection, label OCR, BLE,
-a continuous Cartesia voice conversation and a phone-voice fallback. No printed markers are needed.
-The app is foreground-only and practice-only. No trained model, prescription or
-clinic protocol is bundled. No video is recorded or uploaded.
+The home screen offers practice coaching and **Test camera + model**, a separate
+camera-only detector test that needs no voice setup. The bundled RF-DETR Small
+model detects hands and protected connector tips; Apple Vision supplies fingertips.
+The original RGB/LiDAR hardware test remains under the gear menu > Developer tools.
+Practice coaching adds label OCR, BLE and Cartesia conversation with phone-voice
+fallback. No printed markers are needed. The app is foreground-only and practice-
+only; no prescription or clinic protocol is bundled. No video is recorded/uploaded.
 
-The iOS sources are syntax-checked here, but have not been compiled against an
-iOS SDK: this workspace only has Command Line Tools. Portable logic tests and
-mocked gateway tests passed; they do not validate native APIs, UI or hardware.
+November 8, 2026 verification: project membership, 29 portable logic checks,
+13 mocked gateway/setup tests and all 16 Swift files type-checked against actual
+Apple Catalyst frameworks passed. This workspace has Command Line Tools, without
+an iPhone SDK; iPhone compilation, UI/camera behavior, real-prop accuracy and
+physical warning latency still need full Xcode and a phone.
 
 ## Open and install
 
@@ -28,17 +31,70 @@ mocked gateway tests passed; they do not validate native APIs, UI or hardware.
 4. Plug the **iPhone 15 Pro** into the Mac, unlock it and accept Trust/Pair prompts.
    Enable **Settings > Privacy & Security > Developer Mode** if prompted, then
    restart/confirm on the phone. Select the physical phone as the run destination.
-5. Press **Run** (Command-R), allow Camera access, open **Capture test**, then tap **Start camera**.
+5. Press **Run** (Command-R), tap **Test camera + model**, and allow Camera access.
+   Capture and actual model inference start automatically. For the original
+   two-pane RGB/depth test, open the gear menu > Developer tools >
+   **Camera and depth test**, then tap **Start camera**.
    The app checks actual rear scene-depth support. A standard iPhone 16 is an
    expected unsupported-device case for this rear-LiDAR test; no simulated depth
    or automatic front-camera fallback is used.
-6. After confirming the app works, unplug the cable and repeat. It runs on the
-   phone without a computer/network connection. A free Personal Team profile
+6. After confirming the app works, unplug the cable and repeat. The camera/model
+   test runs on the phone without a computer/network connection.
+   Cartesia conversation separately needs internet. A free Personal Team profile
    expires after seven days; rebuild/reinstall from Xcode after expiration.
 
 Apple documents [free local signing](https://developer.apple.com/help/account/basics/about-your-developer-account)
 and [Developer Mode](https://developer.apple.com/documentation/xcode/enabling-developer-mode-on-a-device).
 Keep signing certificates, provisioning profiles and account authentication local.
+
+## Camera + model: first phone test
+
+1. Tap **Test camera + model** on the home screen. No key, microphone access,
+   routine answers or wristband connection is required. Opening it pauses any
+   active coach session and stops voice/vibration; it does not resume them on exit.
+2. Mount the phone in portrait over disconnected training props. Put a real-looking
+   mock connector tip and hand in view. Check **Model loaded** and the model status.
+   Orange boxes are protected tips, green boxes are learned hands, and cyan dots
+   are Apple fingertips. Class labels and confidence appear below the image.
+3. Check boxes/dots stay aligned on the **Analysed frame**. The image and detections
+   come from the same source frame, so the preview follows inference delivery.
+   This is not a full-camera-rate preview. Move one prop at a time to assess it.
+4. Adjust **Minimum confidence** (default 45%) to inspect weaker detections; hide
+   hand boxes or fingertip dots if needed. These settings do not alter the coach.
+   No detection is not evidence of a clear/sterile surface.
+5. Inspect camera rate, completed model results/s, pipeline duration, analysed-frame
+   age, depth source and estimated gap/unavailability reason. Gap output is withheld
+   above 250 ms source-frame age. Boxes dim and are marked stale above one second
+   or when stopped. Pipeline timing excludes the extra debug preview rendering;
+   frame age includes that work and delivery. Neither measures physical warning latency.
+6. Stop/restart, press Done, background/lock, and deny camera access in separate
+   trials. Capture must stop; accepting a pending permission prompt after closing
+   the view must not start it again. Return and press Start after an interruption.
+   This screen generates no speech, routine completion or vibration warnings.
+
+The same production detector/depth worker is used, with one in-flight inference
+and no backlog. A paired RGB preview is generated only for this debug mode.
+The current capture controller requires rear LiDAR; it has no RGB-only fallback.
+Model accuracy, tiny-tip depth and sustained performance still require real props.
+
+## Skip/jump while testing a routine
+
+Open gear menu > **Developer tools**, enable **Routine debug controls**, close setup.
+Use the main screen's **Jump to step** picker and **Jump to selected step** or
+**Skip current step**. This works independently of Cartesia; jumping from idle
+starts at the selected check silently. If voice is active, a jump reconnects the
+conversation at the new check. With debug controls enabled, “skip this step”,
+“skip ahead” and “next step” also work by voice. The toggle is off on each app launch.
+
+Debug moves clear pending read-backs, stop the band and log `debug_step_jump` or
+`debug_step_skipped`, with unverified evidence. A debug finish uses `debug_finished`.
+They never log a completed check or arm monitoring. Camera readiness still applies;
+possible-contact review cannot be skipped. Use the separate camera-only screen to
+inspect detection independently of routine gates. Pause/resume/end/debug-skip
+commands are dispatched from actual user transcripts by native code, without
+waiting for an LLM tool call; a late duplicate tool call does not apply them twice.
+“Please pause” and “Can we pause?” are supported; negated phrases are not substring
+matched. Pause interrupts playback. Speech recognition and turn-end latency remain.
 
 ## Capture test: what to look for
 
@@ -56,7 +112,7 @@ Keep signing certificates, provisioning profiles and account authentication loca
   capped at 10 fps. Depth-bearing frame rate counts AR frames with depth; it is
   not an independent measurement of the LiDAR sensor's scan rate.
 - **Share diagnostics** opens the system share sheet with text only. The Capture
-  test tab needs only camera permission. Practice coach separately requests
+  hardware test needs only camera permission. Practice coach separately requests
   Bluetooth on Connect and microphone/speech on voice input; local network access
   is needed only when using a local development voice gateway. The coach saves
   event metadata locally, without images, recordings or free-text responses.
@@ -91,7 +147,7 @@ An interruption/error requires pressing Start again.
 
 For this narrow milestone, **ARKit sceneDepth** is simpler than wiring separate
 AVFoundation outputs: a single `ARFrame` contains RGB and scene depth. The app uses
-`sceneDepth`, not `smoothedSceneDepth`. The Capture test tab performs no model
+`sceneDepth`, not `smoothedSceneDepth`. The original **Camera and depth test** performs no model
 inference, mesh reconstruction, networking or recording. Practice coach adds a
 separate Vision worker to the same capture-controller implementation. ARKit depth is processed/fused data, not raw
 LiDAR returns. See Apple's [scene-depth sample](https://developer.apple.com/documentation/arkit/displaying-a-point-cloud-using-scene-depth).
@@ -128,7 +184,7 @@ This produces a device-target compile check, not an installable signed IPA. Use
 the signing/Run steps above for the actual phone test. Simulator builds cannot
 verify rear LiDAR. Build output is under the repository's ignored `build/` folder.
 
-## Practice coach: test without a model or Cartesia
+## Practice coach: test without Cartesia
 
 1. Open the gear menu and choose **Try phone voice**. It starts the practice and
    camera together. Allow camera, microphone and on-device speech permissions.
@@ -264,8 +320,9 @@ phone, developer-team secrets or Cartesia key. Building catches compiler errors
 before phone installation; it does not prove camera, BLE, audio or model accuracy.
 
 Keep your Xcode signing-team and unique bundle-ID changes when updating source.
-The repository's generic project starts without a personal team. Replacing a
-locally configured project file with that template can reset the selection. A
+A teammate may have a different
+signing team in their checkout; replacing a locally configured project can change
+the selection. Keep your own working settings when integrating updates. A
 CodeSign failure is a separate installation/signing problem: inspect the failed
 build's expanded CodeSign log for the underlying error instead of assuming every
 failure is a missing team. The unsigned check deliberately leaves those personal

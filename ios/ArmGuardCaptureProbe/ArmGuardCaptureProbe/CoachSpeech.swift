@@ -167,6 +167,11 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         synthesizer.speak(utterance)
     }
 
+    func suspend() {
+        stop()
+        clipTask?.cancel(); clipTask = nil
+    }
+
     func stop() {
         token = UUID()
         networkTask?.cancel()

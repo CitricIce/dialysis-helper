@@ -169,7 +169,8 @@ struct RoutineCoachView: View {
         if coach.session?.reviewRequired == true || coach.riskLevel != .none {
             let review = coach.session?.reviewRequired == true
             let high = review || coach.riskLevel == .high
-            Label(review ? "Pause and check for possible contact" : (high ? "Move your fingers away" : "Your fingers are getting close"),
+            let gap = coach.distanceRisk != .none ? coach.observation.distanceMM.map { String(format: " · %.0f mm", $0) } ?? "" : ""
+            Label(review ? "Pause and check for possible contact" : (high ? "Move your fingers away" : "Your fingers are getting close") + gap,
                   systemImage: high ? "exclamationmark.octagon.fill" : "exclamationmark.triangle.fill")
                 .font(.headline).padding().frame(maxWidth: .infinity, alignment: .leading)
                 .foregroundStyle(high ? Color.white : Color.black)
@@ -191,6 +192,16 @@ struct RoutineCoachView: View {
                         .font(.caption2.bold()).foregroundStyle(color)
                         .position(x: max(55, min(geometry.size.width - 55, (1 - region.y - region.height / 2) * geometry.size.width)),
                                   y: max(10, region.x * geometry.size.height + 8))
+                }
+                if coach.sterileTipSizeMM != nil, let hand = coach.observation.closestHand,
+                   let tip = coach.observation.closestSurface, let mm = coach.observation.distanceMM {
+                    let a = CGPoint(x: (1 - hand.y) * geometry.size.width, y: hand.x * geometry.size.height)
+                    let b = CGPoint(x: (1 - tip.y) * geometry.size.width, y: tip.x * geometry.size.height)
+                    let color: Color = coach.distanceRisk == .high ? .red : coach.distanceRisk == .medium ? .orange : .cyan
+                    Path { $0.move(to: a); $0.addLine(to: b) }.stroke(color, lineWidth: 2)
+                    Text(String(format: "%.0f mm", mm)).font(.caption.bold()).foregroundStyle(color)
+                        .padding(3).background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
+                        .position(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - 12)
                 }
                 ForEach(Array(coach.observation.fingertips.enumerated()), id: \.offset) { _, point in
                     Circle().fill(.cyan).frame(width: 6, height: 6)
@@ -236,6 +247,20 @@ struct RoutineCoachView: View {
                         showSettings = false
                     }
                     Text("Phone voice can guide the checks and listen for replies. Open-ended questions need Cartesia.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section("Camera distance warnings") {
+                    HStack {
+                        Text("Sterile tip size")
+                        TextField("not set", value: $coach.sterileTipSizeMM, format: .number)
+                            .keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+                        Text("mm").foregroundStyle(.secondary)
+                    }
+                    if coach.sterileTipSizeMM != nil {
+                        Button("Turn off distance warnings", role: .destructive) { coach.sterileTipSizeMM = nil }
+                    }
+                    Text(coach.distanceText).font(.footnote)
+                    Text("Measure the connector tip's longest side with a ruler. The app uses it as the scale: within 80 mm of the tip warns MEDIUM (pulsing band), within 30 mm warns HIGH (continuous band). Experimental 2D estimate; not a contact or sterility check.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Wristband") {

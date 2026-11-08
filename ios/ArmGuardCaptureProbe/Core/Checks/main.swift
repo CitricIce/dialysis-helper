@@ -454,6 +454,26 @@ checks += [
         _ = tracker.update(nil)
         try expect(tracker.mmPerPixel == nil && tracker.distanceMM == nil, "Lost reference reused stale scale")
     }),
+    ("Calibrated distance gives MEDIUM/HIGH warnings with hysteresis", {
+        // Tip box 20 px wide in a 1000 px image; 10 mm tip -> 0.5 mm per pixel.
+        let tip = ProtectedRegion(x: 0.4, y: 0.4, width: 0.02, height: 0.01)
+        func at(_ mm: Double) -> ScaleProximityMeasurement? {
+            ScaleProximity.measure(fingertips: [SensorPoint(x: 0.42 + mm / 0.5 / 1000, y: 0.405)], hands: [],
+                                   regions: [tip], imageWidth: 1000, imageHeight: 1000)
+        }
+        var tracker = ScaleRiskTracker()
+        tracker.sterileTipSizeMM = 10
+        tracker.distanceSmoothAlpha = 1   // no smoothing, so each step is exact
+        try expect(tracker.update(at(100)) == .none, "Far hand warned")
+        try expect(tracker.update(at(60)) == .medium, "MEDIUM band missed")
+        try expect(tracker.update(at(20)) == .high, "HIGH band missed")
+        try expect(tracker.update(at(33)) == .high, "HIGH released inside hysteresis margin")
+        try expect(tracker.update(at(40)) == .medium, "HIGH not released past margin")
+        try expect(tracker.update(at(83)) == .medium, "MEDIUM released inside hysteresis margin")
+        try expect(tracker.update(at(90)) == .none, "MEDIUM not released past margin")
+        try expect(tracker.update(at(0)) == .high && tracker.distanceMM == 0, "Fingertip on the tip not HIGH at 0 mm")
+        try expect(tracker.update(nil) == .none && tracker.current == .none, "Lost reference kept the warning")
+    }),
     ("Direct phone requests carry credentials only in HTTPS headers", {
         let template = try practiceTemplate()
         let request = try CartesiaRequests.agentSession(apiKey: "test-key", voiceID: "test-voice", agentID: "agent_test",

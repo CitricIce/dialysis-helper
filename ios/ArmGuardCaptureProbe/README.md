@@ -1,5 +1,30 @@
 # ArmGuard native practice coach and capture test
 
+## Camera-distance warnings: on after tip calibration (November 8)
+
+Changed at the user's request. The SPINOSAURUS-style image-scale method now drives
+warnings again, but **only after the user enters the measured sterile connector tip
+size** (Settings → Camera distance warnings, in mm, stored on the phone). With no size
+entered it stays off, as before. No default size is assumed.
+
+- **Method:** mm/px = tip size ÷ largest `Sterile_connector_tip` box (EMA 0.20).
+  Distance = closest fingertip (Apple Vision, or the model's `Hand` box as fallback)
+  to the tip box edge × mm/px (EMA 0.25); a fingertip on the box = 0 mm, immediately.
+- **Levels:** MEDIUM ≤ 80 mm, HIGH ≤ 30 mm, with 5 mm hysteresis on release.
+  Thresholds are defaults, not clinically chosen. 2D estimate only; it cannot
+  confirm contact or sterility.
+- **Feedback:** MEDIUM = orange banner + mm, warning haptic, "getting close" cue, band
+  pulsing (`W` / v2 mode 1, duty 200). HIGH = red banner + mm, error haptic, "move them
+  away now" cue repeated every 4 s, band continuous (`E` / v2 mode 2, duty 255). The
+  preview draws the closest gap line with its mm label.
+- **Scope:** runs in every phase, including placeholder-model rehearsal, independent of
+  `detectorStatus`. The armed LiDAR path is unchanged; the higher level wins. Band
+  commands expire after 250 ms, so it stops when observations stop.
+- **Firmware:** unchanged, `firmware/vibration_band/vibration_band.ino`.
+- **Verified:** portable checks (new hysteresis/level check) and the unsigned iPhone
+  build. **Not verified:** iPhone run, real tip calibration, distance accuracy against
+  a ruler, band latency, Arduino compile/flash.
+
 ## Current low-accuracy model and camera/voice integration (November 8)
 
 The confirmed phone is **iPhone 15 Pro only**. Its camera image works; the reported
@@ -301,9 +326,10 @@ slot, and reads outputs by name. It rejects unsupported tensor shapes/types and
 nonfinite values. Whole-hand boxes are displayed; Apple Vision provides fingertip
 coverage for proximity. The model contains no cap-interior or clothing/floor class.
 
-The separate image-scale method has no default millimetre calibration and does
-not drive the wristband. Current alerts use registered depth and the existing
-experimental proximity gate. Camera arming requires a fresh clear observation,
+The separate image-scale method has no default millimetre calibration. Once you
+enter the measured tip size in Settings, it drives MEDIUM/HIGH banner, voice,
+haptic and wristband warnings in every phase. The registered-depth path keeps its
+existing experimental proximity gate. Camera arming requires a fresh clear observation,
 protected surfaces, usable depth and both hands with all five confident Apple tips
 each. Image overlap requests review; it cannot prove physical contact. Pause,
 backgrounding, stale data and review flags do not allow a second alert loop to

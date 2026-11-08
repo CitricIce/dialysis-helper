@@ -11,6 +11,19 @@ final class CoachViewModel: ObservableObject {
     @Published var detectionConfidence = 0.45 {
         didSet { if session?.template.detectorStatus != .experimental { vision.setConfidenceThreshold(Float(detectionConfidence)) } }
     }
+    /// Measured sterile connector tip size (mm, longest side seen by the camera). nil = not calibrated:
+    /// camera-distance warnings stay off. Persisted on this phone only.
+    @Published var sterileTipSizeMM: Double? = CoachViewModel.storedTipSize() {
+        didSet {
+            if let value = sterileTipSizeMM { UserDefaults.standard.set(value, forKey: "sterileTipSizeMM") }
+            else { UserDefaults.standard.removeObject(forKey: "sterileTipSizeMM") }
+            vision.setSterileTipSize(sterileTipSizeMM)
+        }
+    }
+    private static func storedTipSize() -> Double? {
+        let value = UserDefaults.standard.double(forKey: "sterileTipSizeMM")
+        return value.isFinite && value > 0 ? value : nil
+    }
     @Published private(set) var session: RoutineSession?
     @Published private(set) var observation = CoachVisionSnapshot()
     @Published var selectedSlot = "Exchange 1"
@@ -45,6 +58,7 @@ final class CoachViewModel: ObservableObject {
     private let logQueue = DispatchQueue(label: "org.armguard.coach.events", qos: .utility)
     private var runID = UUID()
     private var lastRiskLevel: RiskLevel = .none
+    private var lastDistanceRisk: RiskLevel = .none
     private let haptics = UINotificationFeedbackGenerator()
 
     init() {
@@ -54,6 +68,7 @@ final class CoachViewModel: ObservableObject {
             }
             session = try RoutineSession(template: JSONDecoder().decode(RoutineTemplate.self, from: Data(contentsOf: url)))
         } catch { message = "Practice template could not load. \(error.localizedDescription)" }
+        vision.setSterileTipSize(sterileTipSizeMM)
         capture.frameObserver = { [weak vision = self.vision] frame in vision?.submit(frame) }
         vision.onResult = { [weak self] output in self?.received(output) }
         speech.onResponse = { [weak self] text in self?.handle(text) }
@@ -125,8 +140,20 @@ final class CoachViewModel: ObservableObject {
         if case .clear = observation.decision { return true }
         return false // Start with a clear view and a gap outside the experimental warning band.
     }
+    /// Camera-distance (SPINOSAURUS) level: needs a calibrated tip size and a fresh observation.
+    /// Unlike the LiDAR path it runs in every phase, so it warns during rehearsal too.
+    var distanceRisk: RiskLevel {
+        guard sterileTipSizeMM != nil, fresh, observation.distanceMM != nil else { return .none }
+        return observation.scaleRisk
+    }
     var riskLevel: RiskLevel {
-        ProximityFeedback.level(phase: session?.phase, fresh: fresh, decision: observation.decision)
+        max(ProximityFeedback.level(phase: session?.phase, fresh: fresh, decision: observation.decision), distanceRisk)
+    }
+    var distanceText: String {
+        guard let size = sterileTipSizeMM else { return "Camera distance warnings off: enter the tip size in Settings" }
+        guard fresh, let mm = observation.distanceMM else { return String(format: "Camera distance: no hand + tip in view (tip %.1f mm)", size) }
+        let label = distanceRisk == .high ? "HIGH" : distanceRisk == .medium ? "MEDIUM" : "clear"
+        return String(format: "Camera distance %.0f mm · %@ · experimental", mm, label)
     }
     var riskText: String {
         guard fresh else { return "Observation unavailable or older than 250 ms" }
@@ -147,6 +174,7 @@ final class CoachViewModel: ObservableObject {
         Detections: \(observation.regions.count) openings; \(observation.hands.count) hand boxes; \(observation.fingertips.count) fingertips
         Last pipeline processing: \(String(format: "%.1f", observation.processingMilliseconds)) ms
         Observation: \(riskText)
+        \(distanceText)
         Band: \(band.status)
         No prescription configured. No sterility or contact verification.
         """
@@ -272,6 +300,7 @@ final class CoachViewModel: ObservableObject {
             "vision_frame_age_ms": observation.receipt > 0 ? max(0, ProcessInfo.processInfo.systemUptime - observation.receipt) * 1000 : -1,
             "vision_status": observation.modelStatus,
             "proximity_status": riskText,
+            "camera_distance_status": distanceText,
             "opening_count": observation.regions.count,
             "hand_box_count": observation.hands.count,
             "fingertip_count": observation.fingertips.count,
@@ -414,6 +443,7 @@ final class CoachViewModel: ObservableObject {
     }
     private func checkHealth() {
         objectWillChange.send() // Keep displayed frame age/staleness honest between results.
+        driveDistanceAlerts()
         guard session?.phase == .monitoring else { return }
         if !fresh { loseObservation("Observation lost or delayed. Pause and restore a clear view before rearming.") }
     }
@@ -423,6 +453,7 @@ final class CoachViewModel: ObservableObject {
     }
     private func received(_ output: CoachVisionSnapshot) {
         observation = output
+        defer { driveDistanceAlerts() }
         let level = riskLevel
         if level > lastRiskLevel { haptics.notificationOccurred(level == .high ? .error : .warning) }
         lastRiskLevel = level
@@ -458,9 +489,33 @@ final class CoachViewModel: ObservableObject {
         case .clear:
             guard output.handCoverageComplete else { loseObservation("Fingertip coverage lost. Pause and show both hands before rearming."); return }
             if clearSince == nil { clearSince = now }
-            if now - (clearSince ?? now) >= 0.3 { band.stop() }
+            if distanceRisk != .none { /* camera-distance warning owns the band */ }
+            else if now - (clearSince ?? now) >= 0.3 { band.stop() }
             else if now - lastHazardTime < 0.3 { band.set(intensity: 80) }
         }
+    }
+    /// MEDIUM -> pulsing band + "getting close" cue; HIGH -> continuous band + "move away" cue.
+    /// Called per result and every 100 ms; BandClient expires each set() after 250 ms, so the
+    /// band stops by itself if observations stop arriving.
+    private func driveDistanceAlerts() {
+        let level = distanceRisk
+        defer { lastDistanceRisk = level }
+        let now = ProcessInfo.processInfo.systemUptime
+        switch level {
+        case .high:
+            band.set(intensity: 255, suspected: true)
+        case .medium:
+            if case .warning = observation.decision, session?.phase == .monitoring { break } // LiDAR already driving
+            if case .projectedOverlap = observation.decision, session?.phase == .monitoring { break }
+            band.set(intensity: 200)
+        case .none:
+            if lastDistanceRisk != .none, session?.phase != .monitoring { band.stop() }
+        }
+        // Phone haptics come from received(), since riskLevel includes this level.
+        // Speak on escalation, and repeat HIGH while it lasts; one shared cooldown with the LiDAR cue.
+        guard level != .none, level > lastDistanceRisk || level == .high, now - warningTime >= 4 else { return }
+        warningTime = now
+        say(level == .high ? CoachSpeech.highCue : CoachSpeech.nearCue, urgent: true)
     }
     private func persist() {
         guard let session, let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }

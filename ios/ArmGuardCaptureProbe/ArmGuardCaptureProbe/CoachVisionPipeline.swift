@@ -47,7 +47,8 @@ final class CoachVisionPipeline {
     private var rfdetr: RFDETRDetector?   // Roboflow RF-DETR export (raw tensors, no Vision wrapper)
     private var attemptedModelLoad = false
     private var modelError = "Protected-part model not installed"
-    private var scaleTracker = ScaleRiskTracker() // diagnostic only; no default physical size
+    private var scaleTracker = ScaleRiskTracker() // worker queue only; alerts only once a tip size is entered
+    private var sterileTipSizeMM: Double? // protected by lock; nil = uncalibrated (no warnings)
     private var resetTracker = false
     private var labelRoles: [String: DetectionRole] = [:]
     private var minimumConfidence: Float = 0.45 // protected by lock
@@ -61,6 +62,12 @@ final class CoachVisionPipeline {
            let data = try? Data(contentsOf: url), let template = try? JSONDecoder().decode(RoutineTemplate.self, from: data) {
             detectorStatus = template.detectorStatus ?? .placeholder
         } else { detectorStatus = .placeholder }
+    }
+
+    /// Measured sterile-tip size in mm (longest side). nil turns distance warnings off.
+    func setSterileTipSize(_ millimetres: Double?) {
+        let valid = millimetres.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        lock.lock(); sterileTipSizeMM = valid; resetTracker = true; lock.unlock()
     }
 
     func setConfidenceThreshold(_ value: Float) {
@@ -97,10 +104,12 @@ final class CoachVisionPipeline {
         let freshTracker = resetTracker
         resetTracker = false
         let confidence = minimumConfidence
+        let tipSize = sterileTipSizeMM
         lock.unlock()
         worker.async { [weak self] in
             guard let self else { return }
             if freshTracker { self.scaleTracker.reset() }
+            self.scaleTracker.sterileTipSizeMM = tipSize
             let output = autoreleasepool { () -> CoachVisionSnapshot in
                 var output = self.process(frame, receipt: now, scanLabel: scan, confidence: confidence)
                 if self.includeDebugPreview { output.debugImage = self.debugRenderer.colorPreview(frame) }
@@ -228,7 +237,8 @@ final class CoachVisionPipeline {
             }
             result.handCoverageComplete = completeHands == 2
             result.provider = hasCustomTips ? "Custom fingertips + Apple coverage/fallback" : "Apple Vision pretrained fingertips"
-            // Image-space diagnostics only. No physical scale is assumed and this does not drive alerts.
+            // SPINOSAURUS method: tip size -> mm/px -> fingertip-to-tip-edge distance -> MEDIUM/HIGH.
+            // Uncalibrated (no tip size entered) it stays image-space only and returns .none.
             let measurement = ScaleProximity.measure(
                 fingertips: result.fingertips, hands: result.hands, regions: result.regions,
                 imageWidth: Double(CVPixelBufferGetWidth(frame.capturedImage)),

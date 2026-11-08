@@ -51,6 +51,7 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
     private var listeningLimit: Timer?
     private var recognitionFailures = 0
     static let nearCue = "Your fingers are close to the opening. Pause and move them away."
+    static let highCue = "Stop. Your fingers are very close to the sterile tip. Move them away now."
     static let reviewCue = "Your hand overlaps the opening in the image. Pause and follow your dialysis team's instructions about possible contact."
     static let viewLostCue = "I've lost a clear view. We're paused. Restore the view, then say resume."
 
@@ -85,7 +86,7 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
     }
     func prepareAlertClips() {
         guard clipTask == nil, connectionReady else { return }
-        let requests = [Self.nearCue, Self.reviewCue, Self.viewLostCue].compactMap { text -> (String, URLRequest)? in
+        let requests = [Self.nearCue, Self.highCue, Self.reviewCue, Self.viewLostCue].compactMap { text -> (String, URLRequest)? in
             guard alertClips[text] == nil, let request = speechRequest(text) else { return nil }
             return (text, request)
         }

@@ -1,5 +1,30 @@
 # Handoff: hand-to-sterile-tip proximity warnings (RF-DETR + vibration band)
 
+## Camera-distance warnings: on after tip calibration (November 8)
+
+Changed at the user's request. The SPINOSAURUS-style image-scale method now drives
+warnings again, but **only after the user enters the measured sterile connector tip
+size** (Settings → Camera distance warnings, in mm, stored on the phone). With no size
+entered it stays off, as before. No default size is assumed.
+
+- **Method:** mm/px = tip size ÷ largest `Sterile_connector_tip` box (EMA 0.20).
+  Distance = closest fingertip (Apple Vision, or the model's `Hand` box as fallback)
+  to the tip box edge × mm/px (EMA 0.25); a fingertip on the box = 0 mm, immediately.
+- **Levels:** MEDIUM ≤ 80 mm, HIGH ≤ 30 mm, with 5 mm hysteresis on release.
+  Thresholds are defaults, not clinically chosen. 2D estimate only; it cannot
+  confirm contact or sterility.
+- **Feedback:** MEDIUM = orange banner + mm, warning haptic, "getting close" cue, band
+  pulsing (`W` / v2 mode 1, duty 200). HIGH = red banner + mm, error haptic, "move them
+  away now" cue repeated every 4 s, band continuous (`E` / v2 mode 2, duty 255). The
+  preview draws the closest gap line with its mm label.
+- **Scope:** runs in every phase, including placeholder-model rehearsal, independent of
+  `detectorStatus`. The armed LiDAR path is unchanged; the higher level wins. Band
+  commands expire after 250 ms, so it stops when observations stop.
+- **Firmware:** unchanged, `firmware/vibration_band/vibration_band.ino`.
+- **Verified:** portable checks (new hysteresis/level check) and the unsigned iPhone
+  build. **Not verified:** iPhone run, real tip calibration, distance accuracy against
+  a ruler, band latency, Arduino compile/flash.
+
 ## Current low-accuracy model and camera/voice integration (November 8)
 
 The confirmed phone is **iPhone 15 Pro only**. Its camera image works; the reported
@@ -115,7 +140,8 @@ section supersedes its decoder, warning-loop and voice-setup details.
   storage. Hand boxes are diagnostic; Apple Vision supplies fingertip coverage.
 - Removed the parallel timer that could send band commands while paused. Banner,
   phone feedback, speech and band follow the native armed routine. The uncalibrated
-  10 mm image-scale assumption no longer drives alerts or presents millimetres.
+  10 mm image-scale assumption was removed. (Superseded later on November 8: the
+  image-scale path drives alerts again once the user enters a measured tip size.)
 - Kept the conversational UI and natural spoken check replies. Direct iPhone-to-
   Cartesia access is now default, with the user-entered API key in Keychain. Voice
   and agent IDs are prefilled. The laptop gateway is stopped and optional.
@@ -224,11 +250,12 @@ Service `7a1e0001-3c5d-4b8a-9f21-6d2c8e4b1a00`, device name `DialysisBand`.
 ## Open work (in order)
 1. Run the `--image` check on a real exchange photo; confirm the reference and app-decoding lists match.
 2. On a phone, confirm the debug line shows `512px · classes: ...` (not "metadata missing").
-3. Measure the real catheter-tip size and set `ScaleRiskTracker.sterileTipSizeMM` (currently a 10 mm placeholder).
+3. Measure the real connector-tip size and enter it in the app (Settings → Camera distance warnings).
+   Check the displayed mm against a ruler at a few distances.
 4. Flash `firmware/vibration_band/vibration_band.ino` (ESP32 Arduino core 2.x+ for `analogWrite`). Test
    over serial (`W`/`E`/`S`/`T` at 115200), then from the app: Connect, then trigger warnings.
-5. Tune the thresholds with the user. Consider hysteresis if the banner flickers at boundaries.
-6. Optional: add `ScaleProximity` / `ScaleRiskTracker` cases to `Core/Checks/main.swift`.
+5. Tune the thresholds with the user (5 mm release hysteresis is in place).
+6. Done: `ScaleRiskTracker` level/hysteresis check is in `Core/Checks/main.swift`.
 
 ## Notes
 - `SPINOSAURUS.py` (not in the repo) contains a plaintext Roboflow API key. The user should rotate it if it was shared.

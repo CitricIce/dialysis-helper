@@ -197,12 +197,16 @@ public struct ScaleRiskTracker {
     public var mediumThresholdMM = 80.0   // <= this: MEDIUM RISK
     public var scaleSmoothAlpha = 0.20    // SCALE_SMOOTH_ALPHA
     public var distanceSmoothAlpha = 0.25 // DISTANCE_SMOOTH_ALPHA
+    /// Hysteresis: a level is only released once the distance is this far past its threshold,
+    /// so a hand hovering at a boundary does not make the banner and band flicker.
+    public var releaseMarginMM = 5.0
     public private(set) var mmPerPixel: Double?
     public private(set) var distanceMM: Double?
+    public private(set) var current: RiskLevel = .none
 
     public init() {}
 
-    public mutating func reset() { mmPerPixel = nil; distanceMM = nil }
+    public mutating func reset() { mmPerPixel = nil; distanceMM = nil; current = .none }
 
     private static func ema(_ previous: Double?, _ new: Double, _ alpha: Double) -> Double {
         guard let previous else { return new }
@@ -219,8 +223,16 @@ public struct ScaleRiskTracker {
         mmPerPixel = scale
         let raw = measurement.distancePixels * scale
         // Overlap reports immediately; smoothing must not delay the most serious case.
-        distanceMM = raw == 0 ? 0 : Self.ema(distanceMM, raw, distanceSmoothAlpha)
-        return level(for: distanceMM!)
+        let distance = raw == 0 ? 0 : Self.ema(distanceMM, raw, distanceSmoothAlpha)
+        distanceMM = distance
+        // Escalate immediately; de-escalate only past threshold + margin.
+        var next = level(for: distance)
+        if next < current {
+            let held = current == .high ? highThresholdMM : mediumThresholdMM
+            if distance <= held + releaseMarginMM { next = current }
+        }
+        current = next
+        return next
     }
 
     public func level(for millimetres: Double) -> RiskLevel {

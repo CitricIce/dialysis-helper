@@ -109,6 +109,12 @@ struct RoutineCoachView: View {
                     .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
                     .foregroundStyle(.teal).background(.white, in: RoundedRectangle(cornerRadius: 14))
             }.buttonStyle(.plain)
+            if !coach.voiceConfigured {
+                Button { showSettings = true } label: {
+                    Label("Set up Cartesia voice for open questions", systemImage: "waveform.badge.plus")
+                        .font(.subheadline.bold()).frame(maxWidth: .infinity)
+                }.buttonStyle(.plain).opacity(0.95)
+            }
             HStack {
                 Text("Practising").opacity(0.85)
                 Spacer()
@@ -124,12 +130,19 @@ struct RoutineCoachView: View {
         .shadow(color: .teal.opacity(0.25), radius: 16, y: 8)
 
         // Quick actions
-        HStack(spacing: 12) {
-            actionTile("viewfinder", "Live Guard", "See the gap live", tint: .teal) { showLiveGuard = true }
-            actionTile("applewatch.radiowaves.left.and.right", "Wristband",
-                       coach.band.connected ? "Connected" : "Tap to connect",
-                       tint: coach.band.connected ? .green : .orange) { coach.band.connect() }
-            actionTile("ruler", "Connectors", "8 mm · 13 mm", tint: .blue) { showConnectors = true }
+        Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+            GridRow {
+                actionTile("viewfinder", "Live Guard", "See the gap live", tint: .teal) { showLiveGuard = true }
+                actionTile("cpu", "Model test", "Roboflow boxes, no voice", tint: .purple) {
+                    coach.backgrounded(); showModelDebug = true
+                }
+            }
+            GridRow {
+                actionTile("applewatch.radiowaves.left.and.right", "Wristband",
+                           coach.band.connected ? "Connected" : "Tap to connect",
+                           tint: coach.band.connected ? .green : .orange) { coach.band.connect() }
+                actionTile("ruler", "Connectors", "8 mm · 13 mm", tint: .blue) { showConnectors = true }
+            }
         }
 
         // Connectors (fixed sizes)
@@ -203,7 +216,7 @@ struct RoutineCoachView: View {
                     Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading).padding(14)
             .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
         }.buttonStyle(.plain)
     }
@@ -331,20 +344,20 @@ struct RoutineCoachView: View {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                 }
             }
-            DisclosureGroup("Camera details") {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(coach.capture.status)
-                    Text(coach.observation.modelStatus).textSelection(.enabled)
-                    Text("\(coach.observation.detections.count) boxes · \(coach.observation.fingertips.count) fingertips · " +
-                         (coach.observationAge.map { String(format: "analysed frame %.0f ms old", $0 * 1000) } ?? "waiting for analysis"))
-                        .monospacedDigit()
-                    if !coach.displayFresh { Text("Analysis waiting, stopped or stale").foregroundStyle(.orange) }
-                    if coach.session?.template.detectorStatus != .experimental {
-                        HStack { Text("Detection sensitivity"); Spacer(); Text(String(format: "%.0f%%", coach.detectionConfidence * 100)) }
-                        Slider(value: $coach.detectionConfidence, in: 0.1...0.9, step: 0.05)
-                    }
-                }.font(.caption)
-            }.font(.footnote)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(coach.capture.status)
+                Text(coach.observation.modelStatus).textSelection(.enabled)
+                Text("\(coach.observation.detections.count) boxes · \(coach.observation.fingertips.count) fingertips · " +
+                     (coach.observationAge.map { String(format: "analysed frame %.0f ms old", $0 * 1000) } ?? "waiting for analysis"))
+                    .monospacedDigit()
+                if !coach.displayFresh { Text("Analysis waiting, stopped or stale").foregroundStyle(.orange) }
+                if coach.session?.template.detectorStatus != .experimental {
+                    HStack { Text("Preview confidence"); Spacer(); Text(String(format: "%.0f%%", coach.detectionConfidence * 100)) }
+                    Slider(value: $coach.detectionConfidence, in: 0.1...0.9, step: 0.05)
+                    Text("Lower this to inspect weak predictions from the low-accuracy model.")
+                        .foregroundStyle(.secondary)
+                }
+            }.font(.caption)
         }
     }
 

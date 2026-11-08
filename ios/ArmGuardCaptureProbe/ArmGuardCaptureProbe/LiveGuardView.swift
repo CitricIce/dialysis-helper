@@ -72,10 +72,19 @@ struct GuardOverlay: View {
                         zone(rect, mm: GuardThresholds.high, color: .red, mmPerPixel: mmPerPixel, size: geometry.size)
                     }
                 }
-                ForEach(Array(obs.hands.enumerated()), id: \.offset) { _, hand in
-                    let rect = map.rect(hand)
-                    RoundedRectangle(cornerRadius: 10).stroke(.green.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
-                        .frame(width: rect.width, height: rect.height).position(x: rect.midX, y: rect.midY)
+                // Every Roboflow RF-DETR detection with its class name and confidence (as in the
+                // original overlay): orange = protected tip, green = hand, gray = other classes.
+                ForEach(Array(obs.detections.enumerated()), id: \.offset) { _, detection in
+                    let rect = map.rect(detection.region)
+                    let color: Color = detection.role == .protectedOpening ? .orange : (detection.role == .hand ? .green : .gray)
+                    if detection.role != .protectedOpening {
+                        RoundedRectangle(cornerRadius: 8).stroke(color, lineWidth: 2)
+                            .frame(width: rect.width, height: rect.height).position(x: rect.midX, y: rect.midY)
+                    }
+                    Text("\(detection.label) \(Int(detection.confidence * 100))%")
+                        .font(.caption2.bold()).foregroundStyle(color)
+                        .padding(.horizontal, 5).padding(.vertical, 1).background(.black.opacity(0.55), in: Capsule())
+                        .position(x: min(max(rect.midX, 60), geometry.size.width - 60), y: max(rect.minY + 10, 10))
                 }
                 ForEach(Array(obs.regions.enumerated()), id: \.offset) { index, region in
                     let rect = map.rect(region)
@@ -88,7 +97,8 @@ struct GuardOverlay: View {
                     Text(tip.map { String(format: "%@ · %.0f mm", $0.name, $0.sizeMM) } ?? "Sterile tip")
                         .font(.caption2.bold()).foregroundStyle(.white)
                         .padding(.horizontal, 6).padding(.vertical, 2).background(.black.opacity(0.55), in: Capsule())
-                        .position(x: min(max(rect.midX, 40), geometry.size.width - 40), y: max(rect.minY - 12, 10))
+                        .position(x: min(max(rect.midX, 40), geometry.size.width - 40),
+                                  y: min(rect.maxY + 12, geometry.size.height - 10))
                 }
                 ForEach(Array(obs.fingertips.enumerated()), id: \.offset) { _, tip in
                     Circle().fill(.cyan).frame(width: 7, height: 7).position(map.point(tip))
@@ -171,6 +181,7 @@ struct LiveGuardView: View {
     @State private var pulse = false
     @State private var showConnectors = false
     @State private var showSummary = false
+    @State private var showModelPanel = false
 
     private var level: RiskLevel {
         if case .measuring(let level, _) = coach.guardState { return level }
@@ -198,8 +209,9 @@ struct LiveGuardView: View {
                     .opacity(level == .high ? (pulse ? 1 : 0.35) : 0.9)
                     .ignoresSafeArea().allowsHitTesting(false)
             }
-            VStack(spacing: 0) {
+            VStack(spacing: 8) {
                 topBar
+                modelPanel
                 Spacer()
                 statusCard
             }.padding(.horizontal, 16).padding(.bottom, 8)
@@ -233,6 +245,44 @@ struct LiveGuardView: View {
                     .background(.ultraThinMaterial, in: Circle())
             }.accessibilityLabel("Session summary")
         }.foregroundStyle(.white).padding(.top, 8)
+    }
+
+    /// Roboflow RF-DETR status: proves the model is running and exposes the sensitivity slider
+    /// (the low-accuracy placeholder often scores below the default 45%).
+    private var modelPanel: some View {
+        let obs = coach.observation
+        let tips = obs.detections.filter { $0.role == .protectedOpening }.count
+        let hands = obs.detections.filter { $0.role == .hand }.count
+        return VStack(alignment: .leading, spacing: 8) {
+            Button { withAnimation(.snappy) { showModelPanel.toggle() } } label: {
+                HStack(spacing: 8) {
+                    Circle().fill(obs.modelInstalled ? (coach.displayFresh ? Color.green : Color.orange) : Color.red)
+                        .frame(width: 8, height: 8)
+                    Text("Roboflow RF-DETR").font(.caption.bold())
+                    Text("· \(tips) tip · \(hands) hand · \(obs.fingertips.count) fingertips").font(.caption.monospacedDigit())
+                    Spacer(minLength: 4)
+                    Text(String(format: "%.0f%%", coach.detectionConfidence * 100)).font(.caption.monospacedDigit())
+                    Image(systemName: showModelPanel ? "chevron.up" : "chevron.down").font(.caption2.bold())
+                }
+            }.buttonStyle(.plain)
+            if showModelPanel {
+                Text(obs.modelStatus).font(.caption2).foregroundStyle(.white.opacity(0.8)).textSelection(.enabled)
+                Text("\(obs.detections.count) boxes · " +
+                     (coach.observationAge.map { String(format: "analysed frame %.0f ms old", $0 * 1000) } ?? "waiting for analysis") +
+                     String(format: " · %.0f ms per frame", obs.processingMilliseconds))
+                    .font(.caption2.monospacedDigit()).foregroundStyle(.white.opacity(0.8))
+                if !coach.displayFresh { Text("Analysis waiting, stopped or stale").font(.caption2).foregroundStyle(.orange) }
+                HStack {
+                    Text("Detection sensitivity").font(.caption)
+                    Slider(value: $coach.detectionConfidence, in: 0.1...0.9, step: 0.05)
+                }
+                Text("Lower this to see weaker predictions from the low-accuracy model.")
+                    .font(.caption2).foregroundStyle(.white.opacity(0.7))
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .foregroundStyle(.white)
     }
 
     private func chip(_ text: String, symbol: String, tint: Color) -> some View {

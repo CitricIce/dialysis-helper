@@ -1,5 +1,25 @@
 # ArmGuard native practice coach and capture test
 
+## Earlier features restored and Roboflow model visible again (November 8)
+
+The consumer redesigns had hidden or moved features the team relied on. The Roboflow
+model code (`RFDETRDetector.swift`, pipeline detection) never changed and still runs on
+every frame, but its output was no longer visible. Restored:
+
+- **Detection labels:** Live Guard and the practice camera preview draw every RF-DETR
+  detection again, with class name and confidence (orange tip, green hand, gray other).
+  These sit on top of the zones, tip-type labels and gap line.
+- **Model panel in Live Guard:** a "Roboflow RF-DETR · N tip · N hand · N fingertips"
+  strip with a live/stale dot. Tap it for the model status, box count, frame age,
+  processing time and the **detection sensitivity slider** (the placeholder often scores
+  below the default 45%).
+- **Practice camera details** (capture status, model status, counts, frame age, stale
+  warning, preview-confidence slider) are shown openly again, not collapsed.
+- **Home:** the **Model test** tile (the original "Test camera + model" screen) is back next
+  to Live Guard, and "Set up Cartesia voice for open questions" shows when voice isn't
+  configured. Both are also in Settings → Developer tools.
+- The manual tip-size field stays removed by request; tip sizes are fixed (8 mm / 13 mm).
+
 ## Fixed connector tip sizes and real-app home screen (November 8)
 
 **Tip sizes are now fixed in code and cannot be changed in the app** (`ConnectorTip` in

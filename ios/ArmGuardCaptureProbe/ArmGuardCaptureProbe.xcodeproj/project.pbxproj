@@ -1,53 +1,276 @@
 // !$*UTF8*$!
 {
 	archiveVersion = 1;
-	classes = {};
+	classes = {
+	};
 	objectVersion = 56;
 	objects = {
-		3B564F9F77C1173859B53AF4 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/CoachVisionPipeline.swift"; sourceTree = "<group>"; };
-		308F791C4F9B9DF6A3204CBC = { isa = PBXBuildFile; fileRef = 3B564F9F77C1173859B53AF4; };
-		AE2DB2DE474FA2F841A285ED = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/CoachViewModel.swift"; sourceTree = "<group>"; };
-		00B9A21A26DE9052AF87403C = { isa = PBXBuildFile; fileRef = AE2DB2DE474FA2F841A285ED; };
-		41CB919928E374BCECBDB6BF = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/CartesiaConversation.swift"; sourceTree = "<group>"; };
-		5B86D5ECD60A250009BC5B88 = { isa = PBXBuildFile; fileRef = 41CB919928E374BCECBDB6BF; };
-		1F541673ABDFD9AD901C9C03 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/RoutineCoachView.swift"; sourceTree = "<group>"; };
-		BD664C21B6FD2E40DF14C127 = { isa = PBXBuildFile; fileRef = 1F541673ABDFD9AD901C9C03; };
-		4FF163264747DA55E9697DE5 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/BandClient.swift"; sourceTree = "<group>"; };
-		A6111F3ABF01D5922F07FBB3 = { isa = PBXBuildFile; fileRef = 4FF163264747DA55E9697DE5; };
-		354040B8177FA97B95958357 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/CoachSpeech.swift"; sourceTree = "<group>"; };
-		19B06F301C3B561BC74256C4 = { isa = PBXBuildFile; fileRef = 354040B8177FA97B95958357; };
-		112628D3256418F90BF96911 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Core/Sources/CaptureProbeCore/RoutineEngine.swift"; sourceTree = "<group>"; };
-		56291088B650BC7F59909CD2 = { isa = PBXBuildFile; fileRef = 112628D3256418F90BF96911; };
-		175B91E4AF061CBF18128D5C = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Core/Sources/CaptureProbeCore/ProximityEngine.swift"; sourceTree = "<group>"; };
-		B586B71CF27896912B22D59F = { isa = PBXBuildFile; fileRef = 175B91E4AF061CBF18128D5C; };
-		7A3F7EA6FE3AD1C7990EA137 = { isa = PBXFileReference; lastKnownFileType = text.json; path = "ArmGuardCaptureProbe/Resources/RoutineTemplate.json"; sourceTree = "<group>"; };
-		4E531CF7D06A5C55BE673A55 = { isa = PBXBuildFile; fileRef = 7A3F7EA6FE3AD1C7990EA137; };
-		52BC2FF184CD9E64C2D5C138 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/ArmGuardCaptureProbeApp.swift"; sourceTree = "<group>"; };
-		5B0B184B693B993B5E520ABF = { isa = PBXBuildFile; fileRef = 52BC2FF184CD9E64C2D5C138; };
-		D7E2A197C022FDB881528828 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/ContentView.swift"; sourceTree = "<group>"; };
-		54421F7861D7014005F139AD = { isa = PBXBuildFile; fileRef = D7E2A197C022FDB881528828; };
-		00127F63DA98FE217FFC8563 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/CaptureController.swift"; sourceTree = "<group>"; };
-		7C0E4A6ACA512EBF95503876 = { isa = PBXBuildFile; fileRef = 00127F63DA98FE217FFC8563; };
-		C323B543F6A316371E85A23B = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/FrameRenderer.swift"; sourceTree = "<group>"; };
-		5718CC13E1A0370077317572 = { isa = PBXBuildFile; fileRef = C323B543F6A316371E85A23B; };
-		648EE394600C911B51900919 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Core/Sources/CaptureProbeCore/DepthAnalysis.swift"; sourceTree = "<group>"; };
-		96606D756459ECA09302D94E = { isa = PBXBuildFile; fileRef = 648EE394600C911B51900919; };
-		2E353D68BE52B76DE85B8C26 = { isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ArmGuardCaptureProbe/Info.plist; sourceTree = "<group>"; };
-		CEBC3DD7697151D288F793A3 = { isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
-		496C744B70839754303E8C75 = { isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ArmGuardCaptureProbe.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		807C382AB49A9BFF2D00E986 = { isa = PBXGroup; children = (3B564F9F77C1173859B53AF4, AE2DB2DE474FA2F841A285ED, 41CB919928E374BCECBDB6BF, 1F541673ABDFD9AD901C9C03, 4FF163264747DA55E9697DE5, 354040B8177FA97B95958357, 112628D3256418F90BF96911, 175B91E4AF061CBF18128D5C, 7A3F7EA6FE3AD1C7990EA137, 52BC2FF184CD9E64C2D5C138, D7E2A197C022FDB881528828, 00127F63DA98FE217FFC8563, C323B543F6A316371E85A23B, 648EE394600C911B51900919, 2E353D68BE52B76DE85B8C26, CEBC3DD7697151D288F793A3, BF7D4AF7829CE15E0D25CC26); sourceTree = "<group>"; };
-		BF7D4AF7829CE15E0D25CC26 = { isa = PBXGroup; children = (496C744B70839754303E8C75); name = Products; sourceTree = "<group>"; };
-		85801765FEDA4BFDBCBD9E42 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (308F791C4F9B9DF6A3204CBC, 00B9A21A26DE9052AF87403C, 5B86D5ECD60A250009BC5B88, BD664C21B6FD2E40DF14C127, A6111F3ABF01D5922F07FBB3, 19B06F301C3B561BC74256C4, 56291088B650BC7F59909CD2, B586B71CF27896912B22D59F, 5B0B184B693B993B5E520ABF, 54421F7861D7014005F139AD, 7C0E4A6ACA512EBF95503876, 5718CC13E1A0370077317572, 96606D756459ECA09302D94E); runOnlyForDeploymentPostprocessing = 0; };
-		8F94C5A94E3C5C6E10CFE4A8 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-		E75AC9A4C211F82619532950 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (4E531CF7D06A5C55BE673A55); runOnlyForDeploymentPostprocessing = 0; };
-		112125C3CD87BC95A85CED8C = { isa = PBXNativeTarget; buildConfigurationList = ADC89EEBE2BC0F4EB34F37E0; buildPhases = (85801765FEDA4BFDBCBD9E42, 8F94C5A94E3C5C6E10CFE4A8, E75AC9A4C211F82619532950); buildRules = (); dependencies = (); name = ArmGuardCaptureProbe; productName = ArmGuardCaptureProbe; productReference = 496C744B70839754303E8C75; productType = "com.apple.product-type.application"; };
-		0A6924DE4BA8A963409BEA56 = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 5.0; ENABLE_USER_SCRIPT_SANDBOXING = YES; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; ONLY_ACTIVE_ARCH = YES; }; name = Debug; };
-		B0993D0CA928C82BBCC3B8D6 = { isa = XCBuildConfiguration; buildSettings = { CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = ""; PRODUCT_BUNDLE_IDENTIFIER = org.armguard.captureprobe; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = ArmGuardCaptureProbe/Info.plist; GENERATE_INFOPLIST_FILE = NO; CURRENT_PROJECT_VERSION = 2; MARKETING_VERSION = 0.2; TARGETED_DEVICE_FAMILY = 1; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO; SWIFT_STRICT_CONCURRENCY = minimal; SWIFT_EMIT_LOC_STRINGS = NO; }; name = Debug; };
-		A2FF17A581964043C091EE3A = { isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 17.0; SWIFT_VERSION = 5.0; ENABLE_USER_SCRIPT_SANDBOXING = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; }; name = Release; };
-		70A5BCA41D9E5CFFF2452974 = { isa = XCBuildConfiguration; buildSettings = { CODE_SIGN_STYLE = Automatic; DEVELOPMENT_TEAM = ""; PRODUCT_BUNDLE_IDENTIFIER = org.armguard.captureprobe; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = ArmGuardCaptureProbe/Info.plist; GENERATE_INFOPLIST_FILE = NO; CURRENT_PROJECT_VERSION = 2; MARKETING_VERSION = 0.2; TARGETED_DEVICE_FAMILY = 1; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SUPPORTS_MACCATALYST = NO; SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO; SWIFT_STRICT_CONCURRENCY = minimal; SWIFT_EMIT_LOC_STRINGS = NO; }; name = Release; };
-		88ED9E1BC1FA4D9ECCBC13D3 = { isa = XCConfigurationList; buildConfigurations = (0A6924DE4BA8A963409BEA56, A2FF17A581964043C091EE3A); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		ADC89EEBE2BC0F4EB34F37E0 = { isa = XCConfigurationList; buildConfigurations = (B0993D0CA928C82BBCC3B8D6, 70A5BCA41D9E5CFFF2452974); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		AEF2ED059AA83364D689D1F3 = { isa = PBXProject; attributes = { BuildIndependentTargetsInParallel = YES; LastUpgradeCheck = 1600; TargetAttributes = { 112125C3CD87BC95A85CED8C = { CreatedOnToolsVersion = 16.0; ProvisioningStyle = Automatic; }; }; }; buildConfigurationList = 88ED9E1BC1FA4D9ECCBC13D3; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = 807C382AB49A9BFF2D00E986; productRefGroup = BF7D4AF7829CE15E0D25CC26; projectDirPath = ""; projectRoot = ""; targets = (112125C3CD87BC95A85CED8C); };
+
+/* Begin PBXBuildFile section */
+		00B9A21A26DE9052AF87403C /* ArmGuardCaptureProbe/CoachViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE2DB2DE474FA2F841A285ED /* ArmGuardCaptureProbe/CoachViewModel.swift */; };
+		19B06F301C3B561BC74256C4 /* ArmGuardCaptureProbe/CoachSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 354040B8177FA97B95958357 /* ArmGuardCaptureProbe/CoachSpeech.swift */; };
+		5E7E21A0C0DE0000000000A2 /* ArmGuardCaptureProbe/SterileParts.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 5E7E21A0C0DE0000000000A1 /* ArmGuardCaptureProbe/SterileParts.mlpackage */; };
+		308F791C4F9B9DF6A3204CBC /* ArmGuardCaptureProbe/CoachVisionPipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B564F9F77C1173859B53AF4 /* ArmGuardCaptureProbe/CoachVisionPipeline.swift */; };
+		4E531CF7D06A5C55BE673A55 /* ArmGuardCaptureProbe/Resources/RoutineTemplate.json in Resources */ = {isa = PBXBuildFile; fileRef = 7A3F7EA6FE3AD1C7990EA137 /* ArmGuardCaptureProbe/Resources/RoutineTemplate.json */; };
+		54421F7861D7014005F139AD /* ArmGuardCaptureProbe/ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7E2A197C022FDB881528828 /* ArmGuardCaptureProbe/ContentView.swift */; };
+		56291088B650BC7F59909CD2 /* Core/Sources/CaptureProbeCore/RoutineEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 112628D3256418F90BF96911 /* Core/Sources/CaptureProbeCore/RoutineEngine.swift */; };
+		5718CC13E1A0370077317572 /* ArmGuardCaptureProbe/FrameRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C323B543F6A316371E85A23B /* ArmGuardCaptureProbe/FrameRenderer.swift */; };
+		5B0B184B693B993B5E520ABF /* ArmGuardCaptureProbe/ArmGuardCaptureProbeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52BC2FF184CD9E64C2D5C138 /* ArmGuardCaptureProbe/ArmGuardCaptureProbeApp.swift */; };
+		5B86D5ECD60A250009BC5B88 /* ArmGuardCaptureProbe/CartesiaConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41CB919928E374BCECBDB6BF /* ArmGuardCaptureProbe/CartesiaConversation.swift */; };
+		7C0E4A6ACA512EBF95503876 /* ArmGuardCaptureProbe/CaptureController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00127F63DA98FE217FFC8563 /* ArmGuardCaptureProbe/CaptureController.swift */; };
+		96606D756459ECA09302D94E /* Core/Sources/CaptureProbeCore/DepthAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 648EE394600C911B51900919 /* Core/Sources/CaptureProbeCore/DepthAnalysis.swift */; };
+		A6111F3ABF01D5922F07FBB3 /* ArmGuardCaptureProbe/BandClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FF163264747DA55E9697DE5 /* ArmGuardCaptureProbe/BandClient.swift */; };
+		B586B71CF27896912B22D59F /* Core/Sources/CaptureProbeCore/ProximityEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 175B91E4AF061CBF18128D5C /* Core/Sources/CaptureProbeCore/ProximityEngine.swift */; };
+		BD664C21B6FD2E40DF14C127 /* ArmGuardCaptureProbe/RoutineCoachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F541673ABDFD9AD901C9C03 /* ArmGuardCaptureProbe/RoutineCoachView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		00127F63DA98FE217FFC8563 /* ArmGuardCaptureProbe/CaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/CaptureController.swift; sourceTree = "<group>"; };
+		112628D3256418F90BF96911 /* Core/Sources/CaptureProbeCore/RoutineEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Sources/CaptureProbeCore/RoutineEngine.swift; sourceTree = "<group>"; };
+		175B91E4AF061CBF18128D5C /* Core/Sources/CaptureProbeCore/ProximityEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Sources/CaptureProbeCore/ProximityEngine.swift; sourceTree = "<group>"; };
+		1F541673ABDFD9AD901C9C03 /* ArmGuardCaptureProbe/RoutineCoachView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/RoutineCoachView.swift; sourceTree = "<group>"; };
+		2E353D68BE52B76DE85B8C26 /* ArmGuardCaptureProbe/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ArmGuardCaptureProbe/Info.plist; sourceTree = "<group>"; };
+		354040B8177FA97B95958357 /* ArmGuardCaptureProbe/CoachSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/CoachSpeech.swift; sourceTree = "<group>"; };
+		5E7E21A0C0DE0000000000A1 /* ArmGuardCaptureProbe/SterileParts.mlpackage */ = {isa = PBXFileReference; lastKnownFileType = folder.mlpackage; path = ArmGuardCaptureProbe/SterileParts.mlpackage; sourceTree = "<group>"; };
+		3B564F9F77C1173859B53AF4 /* ArmGuardCaptureProbe/CoachVisionPipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/CoachVisionPipeline.swift; sourceTree = "<group>"; };
+		41CB919928E374BCECBDB6BF /* ArmGuardCaptureProbe/CartesiaConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/CartesiaConversation.swift; sourceTree = "<group>"; };
+		496C744B70839754303E8C75 /* ArmGuardCaptureProbe.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ArmGuardCaptureProbe.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4FF163264747DA55E9697DE5 /* ArmGuardCaptureProbe/BandClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/BandClient.swift; sourceTree = "<group>"; };
+		52BC2FF184CD9E64C2D5C138 /* ArmGuardCaptureProbe/ArmGuardCaptureProbeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/ArmGuardCaptureProbeApp.swift; sourceTree = "<group>"; };
+		648EE394600C911B51900919 /* Core/Sources/CaptureProbeCore/DepthAnalysis.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Sources/CaptureProbeCore/DepthAnalysis.swift; sourceTree = "<group>"; };
+		7A3F7EA6FE3AD1C7990EA137 /* ArmGuardCaptureProbe/Resources/RoutineTemplate.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ArmGuardCaptureProbe/Resources/RoutineTemplate.json; sourceTree = "<group>"; };
+		AE2DB2DE474FA2F841A285ED /* ArmGuardCaptureProbe/CoachViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/CoachViewModel.swift; sourceTree = "<group>"; };
+		C323B543F6A316371E85A23B /* ArmGuardCaptureProbe/FrameRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/FrameRenderer.swift; sourceTree = "<group>"; };
+		CEBC3DD7697151D288F793A3 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		D7E2A197C022FDB881528828 /* ArmGuardCaptureProbe/ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/ContentView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8F94C5A94E3C5C6E10CFE4A8 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		807C382AB49A9BFF2D00E986 = {
+			isa = PBXGroup;
+			children = (
+				3B564F9F77C1173859B53AF4 /* ArmGuardCaptureProbe/CoachVisionPipeline.swift */,
+				5E7E21A0C0DE0000000000A1 /* ArmGuardCaptureProbe/SterileParts.mlpackage */,
+				AE2DB2DE474FA2F841A285ED /* ArmGuardCaptureProbe/CoachViewModel.swift */,
+				41CB919928E374BCECBDB6BF /* ArmGuardCaptureProbe/CartesiaConversation.swift */,
+				1F541673ABDFD9AD901C9C03 /* ArmGuardCaptureProbe/RoutineCoachView.swift */,
+				4FF163264747DA55E9697DE5 /* ArmGuardCaptureProbe/BandClient.swift */,
+				354040B8177FA97B95958357 /* ArmGuardCaptureProbe/CoachSpeech.swift */,
+				112628D3256418F90BF96911 /* Core/Sources/CaptureProbeCore/RoutineEngine.swift */,
+				175B91E4AF061CBF18128D5C /* Core/Sources/CaptureProbeCore/ProximityEngine.swift */,
+				7A3F7EA6FE3AD1C7990EA137 /* ArmGuardCaptureProbe/Resources/RoutineTemplate.json */,
+				52BC2FF184CD9E64C2D5C138 /* ArmGuardCaptureProbe/ArmGuardCaptureProbeApp.swift */,
+				D7E2A197C022FDB881528828 /* ArmGuardCaptureProbe/ContentView.swift */,
+				00127F63DA98FE217FFC8563 /* ArmGuardCaptureProbe/CaptureController.swift */,
+				C323B543F6A316371E85A23B /* ArmGuardCaptureProbe/FrameRenderer.swift */,
+				648EE394600C911B51900919 /* Core/Sources/CaptureProbeCore/DepthAnalysis.swift */,
+				2E353D68BE52B76DE85B8C26 /* ArmGuardCaptureProbe/Info.plist */,
+				CEBC3DD7697151D288F793A3 /* README.md */,
+				BF7D4AF7829CE15E0D25CC26 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BF7D4AF7829CE15E0D25CC26 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				496C744B70839754303E8C75 /* ArmGuardCaptureProbe.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		112125C3CD87BC95A85CED8C /* ArmGuardCaptureProbe */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ADC89EEBE2BC0F4EB34F37E0 /* Build configuration list for PBXNativeTarget "ArmGuardCaptureProbe" */;
+			buildPhases = (
+				85801765FEDA4BFDBCBD9E42 /* Sources */,
+				8F94C5A94E3C5C6E10CFE4A8 /* Frameworks */,
+				E75AC9A4C211F82619532950 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ArmGuardCaptureProbe;
+			productName = ArmGuardCaptureProbe;
+			productReference = 496C744B70839754303E8C75 /* ArmGuardCaptureProbe.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AEF2ED059AA83364D689D1F3 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					112125C3CD87BC95A85CED8C = {
+						CreatedOnToolsVersion = 16.0;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 88ED9E1BC1FA4D9ECCBC13D3 /* Build configuration list for PBXProject "ArmGuardCaptureProbe" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 807C382AB49A9BFF2D00E986;
+			productRefGroup = BF7D4AF7829CE15E0D25CC26 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				112125C3CD87BC95A85CED8C /* ArmGuardCaptureProbe */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E75AC9A4C211F82619532950 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4E531CF7D06A5C55BE673A55 /* ArmGuardCaptureProbe/Resources/RoutineTemplate.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		85801765FEDA4BFDBCBD9E42 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				308F791C4F9B9DF6A3204CBC /* ArmGuardCaptureProbe/CoachVisionPipeline.swift in Sources */,
+				5E7E21A0C0DE0000000000A2 /* ArmGuardCaptureProbe/SterileParts.mlpackage in Sources */,
+				00B9A21A26DE9052AF87403C /* ArmGuardCaptureProbe/CoachViewModel.swift in Sources */,
+				5B86D5ECD60A250009BC5B88 /* ArmGuardCaptureProbe/CartesiaConversation.swift in Sources */,
+				BD664C21B6FD2E40DF14C127 /* ArmGuardCaptureProbe/RoutineCoachView.swift in Sources */,
+				A6111F3ABF01D5922F07FBB3 /* ArmGuardCaptureProbe/BandClient.swift in Sources */,
+				19B06F301C3B561BC74256C4 /* ArmGuardCaptureProbe/CoachSpeech.swift in Sources */,
+				56291088B650BC7F59909CD2 /* Core/Sources/CaptureProbeCore/RoutineEngine.swift in Sources */,
+				B586B71CF27896912B22D59F /* Core/Sources/CaptureProbeCore/ProximityEngine.swift in Sources */,
+				5B0B184B693B993B5E520ABF /* ArmGuardCaptureProbe/ArmGuardCaptureProbeApp.swift in Sources */,
+				54421F7861D7014005F139AD /* ArmGuardCaptureProbe/ContentView.swift in Sources */,
+				7C0E4A6ACA512EBF95503876 /* ArmGuardCaptureProbe/CaptureController.swift in Sources */,
+				5718CC13E1A0370077317572 /* ArmGuardCaptureProbe/FrameRenderer.swift in Sources */,
+				96606D756459ECA09302D94E /* Core/Sources/CaptureProbeCore/DepthAnalysis.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0A6924DE4BA8A963409BEA56 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		70A5BCA41D9E5CFFF2452974 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = DJ76X5LD4B;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ArmGuardCaptureProbe/Info.plist;
+				MARKETING_VERSION = 0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = org.armguard.captureprobe;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		A2FF17A581964043C091EE3A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		B0993D0CA928C82BBCC3B8D6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = DJ76X5LD4B;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ArmGuardCaptureProbe/Info.plist;
+				MARKETING_VERSION = 0.2;
+				PRODUCT_BUNDLE_IDENTIFIER = org.armguard.captureprobe;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		88ED9E1BC1FA4D9ECCBC13D3 /* Build configuration list for PBXProject "ArmGuardCaptureProbe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0A6924DE4BA8A963409BEA56 /* Debug */,
+				A2FF17A581964043C091EE3A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ADC89EEBE2BC0F4EB34F37E0 /* Build configuration list for PBXNativeTarget "ArmGuardCaptureProbe" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B0993D0CA928C82BBCC3B8D6 /* Debug */,
+				70A5BCA41D9E5CFFF2452974 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
 	};
-	rootObject = AEF2ED059AA83364D689D1F3;
+	rootObject = AEF2ED059AA83364D689D1F3 /* Project object */;
 }

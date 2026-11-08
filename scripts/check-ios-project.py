@@ -28,6 +28,8 @@ def main():
     source_paths = [objects[objects[key]["fileRef"]]["path"] for key in source_phase["files"]]
     expected = {str(p.relative_to(APP)) for directory in [APP / "ArmGuardCaptureProbe", APP / "Core/Sources/CaptureProbeCore"]
                 for p in directory.glob("*.swift")}
+    # Core ML models belong in the Sources phase so Xcode compiles them to .mlmodelc.
+    expected |= {str(p.relative_to(APP)) for p in (APP / "ArmGuardCaptureProbe").glob("*.mlpackage")}
     require(len(source_paths) == len(set(source_paths)), "duplicate source in app target")
     require(set(source_paths) == expected, "source membership differs: " + str(set(source_paths) ^ expected))
     for reference in objects.values():

@@ -139,6 +139,23 @@ public struct ScaleProximityMeasurement: Equatable {
     /// Normalized sensor-space endpoints of the closest gap, for drawing.
     public let handPoint: SensorPoint
     public let surfacePoint: SensorPoint
+    /// Index (into the `regions` passed to `measure`) of the tip used as the size reference.
+    public var referenceIndex = 0
+}
+
+/// The two connector tips the team uses. Sizes are fixed measurements and are not
+/// user-editable: blue tip 8 mm at its tip; clear tip with red tubing 13 mm at the very top.
+public enum ConnectorTip: String, CaseIterable {
+    case blue, clear
+    public var sizeMM: Double { self == .blue ? 8 : 13 }
+    public var name: String { self == .blue ? "Blue tip" : "Clear tip" }
+    public var detail: String { self == .blue ? "Blue connector · 8 mm" : "Clear connector, red tubing · 13 mm" }
+    /// Identify a detected tip from its mean chroma (full-range YCbCr, 128 = neutral).
+    /// Blue plastic has strongly raised Cb; a clear tip shows red tubing or background (neutral/raised Cr).
+    public static func identify(meanCb: Double, meanCr: Double) -> ConnectorTip {
+        let blueness = meanCb - 128, warmth = meanCr - 128
+        return blueness > 10 && blueness - warmth > 15 ? .blue : .clear
+    }
 }
 
 public enum ScaleProximity {
@@ -146,11 +163,13 @@ public enum ScaleProximity {
     /// Fingertips are preferred. Whole-hand boxes are used only when no fingertip is visible.
     public static func measure(fingertips: [SensorPoint], hands: [ProtectedRegion], regions: [ProtectedRegion],
                                imageWidth: Double, imageHeight: Double) -> ScaleProximityMeasurement? {
-        let regions = regions.filter(\.isValid)
+        let indexed = regions.enumerated().filter { $0.element.isValid }
+        let regions = indexed.map(\.element)
         guard imageWidth > 0, imageHeight > 0, !regions.isEmpty else { return nil }
         // Reference: the largest sterile tip (the script picked the largest tumor polygon).
-        guard let reference = regions.max(by: { $0.width * $0.height * imageWidth * imageHeight
-                                                 < $1.width * $1.height * imageWidth * imageHeight }) else { return nil }
+        guard let referenceEntry = indexed.max(by: { $0.element.width * $0.element.height
+                                                     < $1.element.width * $1.element.height }) else { return nil }
+        let reference = referenceEntry.element
         let referencePixels = max(1, max(reference.width * imageWidth, reference.height * imageHeight))
 
         func pixels(_ a: SensorPoint, _ b: SensorPoint) -> Double {
@@ -184,6 +203,7 @@ public enum ScaleProximity {
                 }
             }
         }
+        best?.referenceIndex = referenceEntry.offset
         return best
     }
 }

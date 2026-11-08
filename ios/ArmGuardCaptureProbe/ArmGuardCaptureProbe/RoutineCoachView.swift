@@ -11,7 +11,7 @@ struct RoutineCoachView: View {
     @State private var showCapture = false
     @State private var showModelDebug = false
     @State private var showLiveGuard = false
-    @State private var showTipSize = false
+    @State private var showConnectors = false
     @State private var showSummary = false
     @State private var debugCheckID = ""
     @State private var showTyping = false
@@ -32,7 +32,8 @@ struct RoutineCoachView: View {
                 }.padding(20)
             }
             .background(Color(.systemGroupedBackground))
-            .navigationTitle("ArmGuard")
+            .navigationTitle(coach.session?.phase == .idle ? "" : "ArmGuard")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showSettings = true } label: { Image(systemName: "gearshape.fill") }
@@ -41,7 +42,7 @@ struct RoutineCoachView: View {
             }
             .safeAreaInset(edge: .top) { riskBanner.padding(.horizontal) }
             .sheet(isPresented: $showSettings) { settings }
-            .sheet(isPresented: $showTipSize) { TipSizeSheet(coach: coach) }
+            .sheet(isPresented: $showConnectors) { ConnectorsSheet() }
             .sheet(isPresented: $showSummary) { SafetySummaryView(coach: coach).presentationDetents([.medium, .large]) }
             .sheet(isPresented: $showCapture) { CaptureProbeView() }
             .fullScreenCover(isPresented: $showModelDebug) { ModelDebugView() }
@@ -68,77 +69,180 @@ struct RoutineCoachView: View {
 
     // MARK: Home
 
+    private var greeting: String {
+        switch Calendar.current.component(.hour, from: Date()) {
+        case 5..<12: return "Good morning"
+        case 12..<17: return "Good afternoon"
+        default: return "Good evening"
+        }
+    }
+
     @ViewBuilder private func home(_ session: RoutineSession) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "hand.raised.circle.fill")
-                .font(.system(size: 52)).foregroundStyle(.white, .teal)
-            Text("Keep the sterile tip safe").font(.largeTitle.bold())
-            Text("ArmGuard watches your hands during a PD exchange and warns you, on screen, out loud and on your wristband, before your fingers get too close.")
-                .font(.body).foregroundStyle(.secondary)
+        // Header
+        VStack(alignment: .leading, spacing: 2) {
+            Text(greeting + " · " + Date().formatted(.dateTime.weekday(.wide).month().day()))
+                .font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+            Text("ArmGuard").font(.system(size: 34, weight: .bold, design: .rounded))
         }
 
-        VStack(spacing: 0) {
-            setupRow("ruler.fill", "Tip size",
-                     detail: coach.sterileTipSizeMM.map { String(format: "%.1f mm · distance warnings on", $0) } ?? "Measure once with a ruler",
-                     done: coach.sterileTipSizeMM != nil) { showTipSize = true }
-            Divider().padding(.leading, 56)
-            setupRow("applewatch.radiowaves.left.and.right", "Wristband",
-                     detail: coach.band.connected ? "Connected · vibrates on warnings" : "Optional · tap to connect",
-                     done: coach.band.connected) { coach.band.connect() }
-            Divider().padding(.leading, 56)
-            setupRow("waveform", "Voice coach",
-                     detail: coach.voiceConfigured ? "Conversational voice ready" : "Phone voice ready · add Cartesia for questions",
-                     done: coach.voiceConfigured) { showSettings = true }
-        }
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
-
-        Button { showLiveGuard = true } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "viewfinder").font(.title).frame(width: 44)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Live Guard").font(.title3.bold())
-                    Text("See the distance to the sterile tip, live").font(.subheadline).opacity(0.85)
-                }
+        // Status hero with the main action
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: "checkmark.shield.fill").font(.title3)
+                    .frame(width: 38, height: 38).background(.white.opacity(0.2), in: Circle())
+                Text("Protection ready").font(.subheadline.bold())
                 Spacer()
-                Image(systemName: "chevron.right").font(.headline)
             }
-            .padding(18).foregroundStyle(.white)
-            .background(LinearGradient(colors: [.teal, .blue], startPoint: .topLeading, endPoint: .bottomTrailing),
-                        in: RoundedRectangle(cornerRadius: 20))
-        }.buttonStyle(.plain)
-
-        VStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Ready for your exchange").font(.title.bold())
+                Text("Distance warnings are on for both connector tips. Your phone, voice coach and wristband will warn you before your fingers get too close.")
+                    .font(.subheadline).opacity(0.9)
+            }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { statusPills }
+                VStack(alignment: .leading, spacing: 8) { statusPills }
+            }
             Button {
                 coach.voiceConfigured ? coach.start() : coach.start(usePhoneVoice: true)
             } label: {
-                Label("Start guided practice", systemImage: "play.fill").font(.headline).frame(maxWidth: .infinity)
-            }.buttonStyle(.borderedProminent).controlSize(.large)
+                Label("Start exchange practice", systemImage: "play.fill")
+                    .font(.headline).frame(maxWidth: .infinity).padding(.vertical, 14)
+                    .foregroundStyle(.teal).background(.white, in: RoundedRectangle(cornerRadius: 14))
+            }.buttonStyle(.plain)
             HStack {
-                Text("Exchange").foregroundStyle(.secondary)
+                Text("Practising").opacity(0.85)
                 Spacer()
                 Picker("Exchange", selection: $coach.selectedSlot) {
                     ForEach(session.template.slots, id: \.self) { Text($0).tag($0) }
-                }.pickerStyle(.menu)
+                }.pickerStyle(.menu).tint(.white)
             }.font(.subheadline)
         }
+        .padding(20).foregroundStyle(.white)
+        .background(LinearGradient(colors: [Color(red: 0.0, green: 0.62, blue: 0.62), Color(red: 0.06, green: 0.38, blue: 0.72)],
+                                   startPoint: .topLeading, endPoint: .bottomTrailing),
+                    in: RoundedRectangle(cornerRadius: 28))
+        .shadow(color: .teal.opacity(0.25), radius: 16, y: 8)
 
+        // Quick actions
+        HStack(spacing: 12) {
+            actionTile("viewfinder", "Live Guard", "See the gap live", tint: .teal) { showLiveGuard = true }
+            actionTile("applewatch.radiowaves.left.and.right", "Wristband",
+                       coach.band.connected ? "Connected" : "Tap to connect",
+                       tint: coach.band.connected ? .green : .orange) { coach.band.connect() }
+            actionTile("ruler", "Connectors", "8 mm · 13 mm", tint: .blue) { showConnectors = true }
+        }
+
+        // Connectors (fixed sizes)
+        card {
+            HStack {
+                Text("Your connectors").font(.headline)
+                Spacer()
+                Text("Recognised by colour").font(.caption).foregroundStyle(.secondary)
+            }
+            connectorRow(.blue, "Blue tip", "Measured at its tip")
+            Divider()
+            connectorRow(.clear, "Clear tip, red tubing", "Measured at the very top")
+        }
+
+        // Last session
+        card {
+            HStack {
+                Text("Last session").font(.headline)
+                Spacer()
+                if coach.stats.measuredSeconds >= 1 {
+                    Button("Details") { showSummary = true }.font(.subheadline)
+                }
+            }
+            if coach.stats.measuredSeconds >= 1 {
+                HStack(spacing: 10) {
+                    homeStat(coach.stats.closestMM.map { String(format: "%.0f mm", $0) } ?? "—", "Closest")
+                    homeStat("\(coach.stats.alertCount)", "Warnings")
+                    homeStat(coach.stats.safeFraction.map { String(format: "%.0f%%", $0 * 100) } ?? "—", "Safe time")
+                }
+            } else {
+                Label("Your safety summary appears here after Live Guard or a practice.", systemImage: "chart.bar.xaxis")
+                    .font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
+
+        // How it works
+        card {
+            Text("How ArmGuard works").font(.headline)
+            HStack(alignment: .top, spacing: 12) {
+                howStep("iphone.gen3", "Prop your phone", "Rear camera facing your workspace")
+                howStep("eye", "It watches the tip", "Finds your hands and the sterile tip")
+                howStep("waveform.path", "You get warned", "Screen, voice and wristband buzz")
+            }
+        }
+
+        Label("Camera images stay on your phone.", systemImage: "lock.fill")
+            .font(.footnote).foregroundStyle(.secondary)
         Text(session.template.protocolNote).font(.footnote).foregroundStyle(.secondary)
     }
 
-    private func setupRow(_ symbol: String, _ title: String, detail: String, done: Bool,
-                          action: @escaping () -> Void) -> some View {
+    @ViewBuilder private var statusPills: some View {
+        pill("lock.fill", "On-device")
+        pill("applewatch.radiowaves.left.and.right", coach.band.connected ? "Band on" : "Band off")
+        pill("waveform", coach.voiceConfigured ? "Voice" : "Phone voice")
+    }
+
+    private func pill(_ symbol: String, _ text: String) -> some View {
+        HStack(spacing: 4) { Image(systemName: symbol); Text(text) }
+            .font(.caption.bold()).lineLimit(1).fixedSize()
+            .padding(.horizontal, 9).padding(.vertical, 6).background(.white.opacity(0.18), in: Capsule())
+    }
+
+    private func actionTile(_ symbol: String, _ title: String, _ detail: String, tint: Color,
+                            action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: symbol).font(.title3).foregroundStyle(.teal).frame(width: 28)
+            VStack(alignment: .leading, spacing: 10) {
+                Image(systemName: symbol).font(.title3).foregroundStyle(tint)
+                    .frame(width: 40, height: 40).background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.headline).foregroundStyle(.primary)
-                    Text(detail).font(.footnote).foregroundStyle(.secondary)
+                    Text(title).font(.subheadline.bold()).foregroundStyle(.primary)
+                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
                 }
-                Spacer()
-                Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                    .font(.title3).foregroundStyle(done ? .green : .secondary)
-            }.padding(14).contentShape(Rectangle())
+            }
+            .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
         }.buttonStyle(.plain)
+    }
+
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 14) { content() }
+            .padding(18).frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+    }
+
+    private func connectorRow(_ tip: ConnectorTip, _ title: String, _ detail: String) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle().fill(tip == .blue ? Color.blue : Color(.systemBackground))
+                Circle().stroke(tip == .blue ? Color.blue.opacity(0.4) : Color.red, lineWidth: tip == .blue ? 1 : 4)
+            }.frame(width: 32, height: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.subheadline.bold())
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(String(format: "%.0f mm", tip.sizeMM)).font(.title3.bold().monospacedDigit())
+        }
+    }
+
+    private func homeStat(_ value: String, _ title: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.title3.bold().monospacedDigit())
+            Text(title).font(.caption).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity).padding(.vertical, 10)
+            .background(Color(.tertiarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func howStep(_ symbol: String, _ title: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(.teal)
+            Text(title).font(.caption.bold())
+            Text(detail).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: During practice
@@ -299,11 +403,11 @@ struct RoutineCoachView: View {
         NavigationStack {
             Form {
                 Section {
-                    Button { showSettings = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showTipSize = true } } label: {
+                    Button { showSettings = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showConnectors = true } } label: {
                         HStack {
-                            Label("Sterile tip size", systemImage: "ruler")
+                            Label("Connector tips", systemImage: "ruler")
                             Spacer()
-                            Text(coach.sterileTipSizeMM.map { String(format: "%.1f mm", $0) } ?? "Not set").foregroundStyle(.secondary)
+                            Text("Blue 8 mm · Clear 13 mm").foregroundStyle(.secondary)
                         }
                     }
                     Text(coach.distanceText).font(.footnote)

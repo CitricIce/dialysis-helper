@@ -1,12 +1,42 @@
 # Dialysis Helper
 
+## Fixed connector tip sizes and real-app home screen (November 8)
+
+**Tip sizes are now fixed in code and cannot be changed in the app** (`ConnectorTip` in
+`ProximityEngine.swift`):
+
+| Connector | Size used as the scale |
+|---|---|
+| Blue tip | **8 mm**, measured at its tip |
+| Clear tip with red tubing | **13 mm**, measured at the very top |
+
+- The model has one `Sterile_connector_tip` class, so the app identifies each detected
+  tip by **colour**: mean chroma over the inner 60% of the box in the camera's YCbCr
+  frame. Strongly blue → blue 8 mm; otherwise (clear plastic, red tubing, background)
+  → clear 13 mm. If no colour is available it assumes 8 mm, which errs toward warning
+  earlier. The largest tip in view is the scale reference.
+- Distance warnings are **always on**; the manual tip-size field and the "set tip size"
+  step were removed. This replaces the earlier "on after calibration" behaviour below,
+  and the old stored value is cleared.
+- Live Guard labels each tip on screen ("Blue tip · 8 mm" / "Clear tip · 13 mm"). The
+  gear → Settings → Connector tips and the home **Connectors** tile open a read-only
+  connector sheet.
+- **Home screen:** a greeting and date, a gradient "Ready for your exchange" status card
+  with status pills (on-device camera, band, voice) and the **Start exchange practice**
+  button, quick-action tiles (Live Guard, Wristband, Connectors), a **Your connectors**
+  card, a **Last session** card from real session stats, and a "How ArmGuard works" strip.
+- **Limits:** colour identification is a heuristic. A blue drape, coloured light or a
+  strong white-balance cast could mislabel a clear tip, so check the on-screen label.
+- **Verified:** portable checks (new fixed-size/colour/reference check) and the unsigned
+  iPhone build. **Not verified:** colour identification on the real connectors.
+
 ## Consumer UI, Live Guard and safety summary (November 8)
 
 The app was redesigned for patients rather than developers (code: `LiveGuardView.swift`,
 `RoutineCoachView.swift`, `SafetyStats` in `ProximityEngine.swift`).
 
-- **Home:** a setup checklist (tip size, wristband, voice coach; each row opens its
-  setup step), a **Live Guard** card, and one **Start guided practice** button. It uses
+- **Home:** (since replaced by the real-app home above) a setup checklist, a **Live Guard**
+  card, and one **Start guided practice** button. It uses
   Cartesia if configured, otherwise the phone voice. Developer tools, including the
   camera + model test, moved to the gear → **Settings → Developer tools**.
 - **Live Guard:** a full-screen live camera view (works with or without a routine) with
@@ -30,7 +60,7 @@ The app was redesigned for patients rather than developers (code: `LiveGuardView
   **Not verified:** the look on a real iPhone, overlay alignment on live frames,
   zone-size accuracy against a ruler.
 
-## Camera-distance warnings: on after tip calibration (November 8)
+## Camera-distance warnings: on after tip calibration (November 8, superseded by fixed tip sizes above)
 
 Changed at the user's request. The SPINOSAURUS-style image-scale method now drives
 warnings again, but **only after the user enters the measured sterile connector tip

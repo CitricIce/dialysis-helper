@@ -11,19 +11,6 @@ final class CoachViewModel: ObservableObject {
     @Published var detectionConfidence = 0.45 {
         didSet { if session?.template.detectorStatus != .experimental { vision.setConfidenceThreshold(Float(detectionConfidence)) } }
     }
-    /// Measured sterile connector tip size (mm, longest side seen by the camera). nil = not calibrated:
-    /// camera-distance warnings stay off. Persisted on this phone only.
-    @Published var sterileTipSizeMM: Double? = CoachViewModel.storedTipSize() {
-        didSet {
-            if let value = sterileTipSizeMM { UserDefaults.standard.set(value, forKey: "sterileTipSizeMM") }
-            else { UserDefaults.standard.removeObject(forKey: "sterileTipSizeMM") }
-            vision.setSterileTipSize(sterileTipSizeMM)
-        }
-    }
-    private static func storedTipSize() -> Double? {
-        let value = UserDefaults.standard.double(forKey: "sterileTipSizeMM")
-        return value.isFinite && value > 0 ? value : nil
-    }
     @Published private(set) var session: RoutineSession?
     @Published private(set) var stats = SafetyStats()
     @Published private(set) var statsStarted = Date()
@@ -70,7 +57,7 @@ final class CoachViewModel: ObservableObject {
             }
             session = try RoutineSession(template: JSONDecoder().decode(RoutineTemplate.self, from: Data(contentsOf: url)))
         } catch { message = "Practice template could not load. \(error.localizedDescription)" }
-        vision.setSterileTipSize(sterileTipSizeMM)
+        UserDefaults.standard.removeObject(forKey: "sterileTipSizeMM") // old editable size; tips are now fixed
         capture.frameObserver = { [weak vision = self.vision] frame in vision?.submit(frame) }
         vision.onResult = { [weak self] output in self?.received(output) }
         speech.onResponse = { [weak self] text in self?.handle(text) }
@@ -142,30 +129,29 @@ final class CoachViewModel: ObservableObject {
         if case .clear = observation.decision { return true }
         return false // Start with a clear view and a gap outside the experimental warning band.
     }
-    /// Camera-distance (SPINOSAURUS) level: needs a calibrated tip size and a fresh observation.
+    /// Camera-distance (SPINOSAURUS) level from the fixed tip sizes; needs a fresh observation.
     /// Unlike the LiDAR path it runs in every phase, so it warns during rehearsal too.
     var distanceRisk: RiskLevel {
-        guard sterileTipSizeMM != nil, fresh, observation.distanceMM != nil else { return .none }
+        guard fresh, observation.distanceMM != nil else { return .none }
         return observation.scaleRisk
     }
     var riskLevel: RiskLevel {
         max(ProximityFeedback.level(phase: session?.phase, fresh: fresh, decision: observation.decision), distanceRisk)
     }
     var distanceText: String {
-        guard let size = sterileTipSizeMM else { return "Camera distance warnings off: enter the tip size in Settings" }
-        guard fresh, let mm = observation.distanceMM else { return String(format: "Camera distance: no hand + tip in view (tip %.1f mm)", size) }
+        guard fresh, let mm = observation.distanceMM else { return "Camera distance: waiting for a hand and a connector tip in view" }
         let label = distanceRisk == .high ? "HIGH" : distanceRisk == .medium ? "MEDIUM" : "clear"
-        return String(format: "Camera distance %.0f mm · %@ · experimental", mm, label)
+        let tip = observation.referenceTip?.detail ?? "connector tip"
+        return String(format: "Camera distance %.0f mm · %@ · scale from %@ · experimental", mm, label, tip)
     }
 
     /// What the Live Guard screen should tell the user right now, in priority order.
     enum GuardState: Equatable {
-        case cameraStarting, needsCalibration, lookingForTip, lookingForHand
+        case cameraStarting, lookingForTip, lookingForHand
         case measuring(RiskLevel, Double)
     }
     var guardState: GuardState {
         guard capture.isRunning, displayFresh else { return .cameraStarting }
-        guard sterileTipSizeMM != nil else { return .needsCalibration }
         guard !observation.regions.isEmpty else { return .lookingForTip }
         guard fresh, let mm = observation.distanceMM else { return .lookingForHand }
         return .measuring(distanceRisk, mm)
@@ -183,7 +169,7 @@ final class CoachViewModel: ObservableObject {
         let measured = Int(stats.measuredSeconds.rounded())
         var lines = ["ArmGuard practice summary · \(date)"]
         if measured == 0 {
-            lines.append("No distance was measured (set the tip size and keep the tip and a hand in view).")
+            lines.append("No distance was measured (keep a connector tip and a hand in view).")
         } else {
             lines.append("Distance measured for \(measured / 60) min \(measured % 60) s")
             if let closest = stats.closestMM { lines.append(String(format: "Closest approach to the sterile tip: %.0f mm", closest)) }
@@ -234,8 +220,7 @@ final class CoachViewModel: ObservableObject {
     var cameraMessage: String {
         if session?.reviewRequired == true { return "Possible contact needs review" }
         if session?.template.detectorStatus != .experimental {
-            return sterileTipSizeMM == nil ? "Practice preview · set the tip size to turn on distance warnings"
-                                           : "Practice preview · camera distance warnings on (experimental)"
+            return "Practice preview · camera distance warnings on (experimental)"
         }
         if !observation.modelInstalled { return observation.modelStatus }
         if session?.phase == .monitoring { return "Camera watching" }
@@ -547,7 +532,7 @@ final class CoachViewModel: ObservableObject {
         defer { lastDistanceRisk = level }
         let now = ProcessInfo.processInfo.systemUptime
         stats.record(level: level, distanceMM: observation.distanceMM, at: now,
-                     measuring: sterileTipSizeMM != nil && fresh && observation.distanceMM != nil)
+                     measuring: fresh && observation.distanceMM != nil)
         switch level {
         case .high:
             band.set(intensity: 255, suspected: true)

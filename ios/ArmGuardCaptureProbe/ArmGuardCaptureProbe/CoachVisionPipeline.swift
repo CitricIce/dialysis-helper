@@ -35,6 +35,9 @@ struct CoachVisionSnapshot {
     /// Sensor image size in pixels (landscape), so overlays can draw millimetre zones to scale.
     var imagePixelWidth = 0.0
     var imagePixelHeight = 0.0
+    /// Connector type identified for each entry in `regions`, and the one used as the scale.
+    var regionTips: [ConnectorTip] = []
+    var referenceTip: ConnectorTip?
 }
 
 final class CoachVisionPipeline {
@@ -50,8 +53,7 @@ final class CoachVisionPipeline {
     private var rfdetr: RFDETRDetector?   // Roboflow RF-DETR export (raw tensors, no Vision wrapper)
     private var attemptedModelLoad = false
     private var modelError = "Protected-part model not installed"
-    private var scaleTracker = ScaleRiskTracker() // worker queue only; alerts only once a tip size is entered
-    private var sterileTipSizeMM: Double? // protected by lock; nil = uncalibrated (no warnings)
+    private var scaleTracker = ScaleRiskTracker() // worker queue only; tip size is set per frame from the identified tip
     private var resetTracker = false
     private var labelRoles: [String: DetectionRole] = [:]
     private var minimumConfidence: Float = 0.45 // protected by lock
@@ -65,12 +67,6 @@ final class CoachVisionPipeline {
            let data = try? Data(contentsOf: url), let template = try? JSONDecoder().decode(RoutineTemplate.self, from: data) {
             detectorStatus = template.detectorStatus ?? .placeholder
         } else { detectorStatus = .placeholder }
-    }
-
-    /// Measured sterile-tip size in mm (longest side). nil turns distance warnings off.
-    func setSterileTipSize(_ millimetres: Double?) {
-        let valid = millimetres.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
-        lock.lock(); sterileTipSizeMM = valid; resetTracker = true; lock.unlock()
     }
 
     func setConfidenceThreshold(_ value: Float) {
@@ -107,12 +103,10 @@ final class CoachVisionPipeline {
         let freshTracker = resetTracker
         resetTracker = false
         let confidence = minimumConfidence
-        let tipSize = sterileTipSizeMM
         lock.unlock()
         worker.async { [weak self] in
             guard let self else { return }
             if freshTracker { self.scaleTracker.reset() }
-            self.scaleTracker.sterileTipSizeMM = tipSize
             let output = autoreleasepool { () -> CoachVisionSnapshot in
                 var output = self.process(frame, receipt: now, scanLabel: scan, confidence: confidence)
                 if self.includeDebugPreview { output.debugImage = self.debugRenderer.colorPreview(frame) }
@@ -126,6 +120,32 @@ final class CoachVisionPipeline {
                 if publish { self.onResult?(output) }
             }
         }
+    }
+
+    /// Mean Cb/Cr over the inner 60% of a tip box in the camera's full-range YCbCr buffer.
+    /// Sensor coordinates map directly onto the landscape buffer (x -> columns, y -> rows).
+    private static func meanChroma(_ buffer: CVPixelBuffer, region: ProtectedRegion) -> (cb: Double, cr: Double)? {
+        guard CVPixelBufferGetPlaneCount(buffer) >= 2 else { return nil }
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddressOfPlane(buffer, 1) else { return nil }
+        let width = CVPixelBufferGetWidthOfPlane(buffer, 1), height = CVPixelBufferGetHeightOfPlane(buffer, 1)
+        let bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(buffer, 1)
+        func column(_ v: Double) -> Int { max(0, min(width, Int(v * Double(width)))) }
+        func row(_ v: Double) -> Int { max(0, min(height, Int(v * Double(height)))) }
+        let x0 = column(region.x + region.width * 0.2), x1 = column(region.x + region.width * 0.8)
+        let y0 = row(region.y + region.height * 0.2), y1 = row(region.y + region.height * 0.8)
+        guard x1 > x0, y1 > y0 else { return nil }
+        let stepX = max(1, (x1 - x0) / 16), stepY = max(1, (y1 - y0) / 16)
+        let pixels = base.assumingMemoryBound(to: UInt8.self)
+        var cb = 0.0, cr = 0.0, count = 0.0
+        for y in stride(from: y0, to: y1, by: stepY) {
+            for x in stride(from: x0, to: x1, by: stepX) {
+                let p = pixels + y * bytesPerRow + x * 2
+                cb += Double(p[0]); cr += Double(p[1]); count += 1
+            }
+        }
+        return count > 0 ? (cb / count, cr / count) : nil
     }
 
     private func loadModelIfNeeded() {
@@ -240,13 +260,22 @@ final class CoachVisionPipeline {
             }
             result.handCoverageComplete = completeHands == 2
             result.provider = hasCustomTips ? "Custom fingertips + Apple coverage/fallback" : "Apple Vision pretrained fingertips"
-            // SPINOSAURUS method: tip size -> mm/px -> fingertip-to-tip-edge distance -> MEDIUM/HIGH.
-            // Uncalibrated (no tip size entered) it stays image-space only and returns .none.
+            // SPINOSAURUS method: fixed tip size -> mm/px -> fingertip-to-tip-edge distance -> MEDIUM/HIGH.
+            // Each tip is identified by colour (blue 8 mm / clear 13 mm); the largest tip is the scale reference.
             result.imagePixelWidth = Double(CVPixelBufferGetWidth(frame.capturedImage))
             result.imagePixelHeight = Double(CVPixelBufferGetHeight(frame.capturedImage))
+            result.regionTips = result.regions.map { region in
+                // No chroma available: assume the smaller tip, which errs toward warning earlier.
+                Self.meanChroma(frame.capturedImage, region: region)
+                    .map { ConnectorTip.identify(meanCb: $0.cb, meanCr: $0.cr) } ?? .blue
+            }
             let measurement = ScaleProximity.measure(
                 fingertips: result.fingertips, hands: result.hands, regions: result.regions,
                 imageWidth: result.imagePixelWidth, imageHeight: result.imagePixelHeight)
+            if let measurement, result.regionTips.indices.contains(measurement.referenceIndex) {
+                result.referenceTip = result.regionTips[measurement.referenceIndex]
+                scaleTracker.sterileTipSizeMM = result.referenceTip?.sizeMM
+            }
             result.scaleRisk = scaleTracker.update(measurement)
             result.distanceMM = scaleTracker.distanceMM
             result.mmPerPixel = scaleTracker.mmPerPixel

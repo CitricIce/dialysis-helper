@@ -474,6 +474,18 @@ checks += [
         try expect(tracker.update(at(0)) == .high && tracker.distanceMM == 0, "Fingertip on the tip not HIGH at 0 mm")
         try expect(tracker.update(nil) == .none && tracker.current == .none, "Lost reference kept the warning")
     }),
+    ("Connector tips have fixed sizes and are told apart by colour", {
+        try expect(ConnectorTip.blue.sizeMM == 8 && ConnectorTip.clear.sizeMM == 13, "Fixed tip sizes changed")
+        try expect(ConnectorTip.identify(meanCb: 170, meanCr: 110) == .blue, "Blue plastic not identified")
+        try expect(ConnectorTip.identify(meanCb: 128, meanCr: 128) == .clear, "Neutral clear tip called blue")
+        try expect(ConnectorTip.identify(meanCb: 120, meanCr: 175) == .clear, "Red tubing called blue")
+        try expect(ConnectorTip.identify(meanCb: 136, meanCr: 130) == .clear, "Slight blue cast called blue")
+        let small = ProtectedRegion(x: 0.1, y: 0.1, width: 0.02, height: 0.02)
+        let large = ProtectedRegion(x: 0.5, y: 0.5, width: 0.05, height: 0.05)
+        let m = ScaleProximity.measure(fingertips: [SensorPoint(x: 0.3, y: 0.3)], hands: [],
+                                       regions: [small, large], imageWidth: 1000, imageHeight: 1000)
+        try expect(m?.referenceIndex == 1, "Largest tip not used as the size reference")
+    }),
     ("Safety summary counts escalations, closest approach and measured time", {
         var stats = SafetyStats()
         try expect(stats.safeFraction == nil && stats.closestMM == nil, "Summary invented data before measuring")

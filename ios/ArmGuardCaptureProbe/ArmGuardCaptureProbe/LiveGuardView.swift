@@ -64,7 +64,7 @@ struct GuardOverlay: View {
             let obs = coach.observation
             let level = coach.distanceRisk
             ZStack {
-                if showZones, coach.sterileTipSizeMM != nil, let mmPerPixel = obs.mmPerPixel, mmPerPixel > 0,
+                if showZones, let mmPerPixel = obs.mmPerPixel, mmPerPixel > 0,
                    obs.imagePixelWidth > 0, obs.imagePixelHeight > 0 {
                     ForEach(Array(obs.regions.enumerated()), id: \.offset) { _, region in
                         let rect = map.rect(region)
@@ -77,21 +77,23 @@ struct GuardOverlay: View {
                     RoundedRectangle(cornerRadius: 10).stroke(.green.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
                         .frame(width: rect.width, height: rect.height).position(x: rect.midX, y: rect.midY)
                 }
-                ForEach(Array(obs.regions.enumerated()), id: \.offset) { _, region in
+                ForEach(Array(obs.regions.enumerated()), id: \.offset) { index, region in
                     let rect = map.rect(region)
-                    RoundedRectangle(cornerRadius: 4).stroke(.white, lineWidth: 2.5)
+                    let tip = obs.regionTips.indices.contains(index) ? obs.regionTips[index] : nil
+                    RoundedRectangle(cornerRadius: 4).stroke(tip?.tint ?? .white, lineWidth: 2.5)
                         .shadow(color: .black.opacity(0.6), radius: 2)
                         .frame(width: rect.width, height: rect.height).position(x: rect.midX, y: rect.midY)
                     Image(systemName: "plus").font(.caption.bold()).foregroundStyle(.white)
                         .shadow(color: .black, radius: 1).position(x: rect.midX, y: rect.midY)
-                    Text("Sterile tip").font(.caption2.bold()).foregroundStyle(.white)
+                    Text(tip.map { String(format: "%@ · %.0f mm", $0.name, $0.sizeMM) } ?? "Sterile tip")
+                        .font(.caption2.bold()).foregroundStyle(.white)
                         .padding(.horizontal, 6).padding(.vertical, 2).background(.black.opacity(0.55), in: Capsule())
                         .position(x: min(max(rect.midX, 40), geometry.size.width - 40), y: max(rect.minY - 12, 10))
                 }
                 ForEach(Array(obs.fingertips.enumerated()), id: \.offset) { _, tip in
                     Circle().fill(.cyan).frame(width: 7, height: 7).position(map.point(tip))
                 }
-                if coach.sterileTipSizeMM != nil, let hand = obs.closestHand, let edge = obs.closestSurface,
+                if let hand = obs.closestHand, let edge = obs.closestSurface,
                    let mm = obs.distanceMM, coach.fresh {
                     let a = map.point(hand), b = map.point(edge)
                     let color = level == .none ? Color.cyan : level.color
@@ -167,7 +169,7 @@ struct LiveGuardView: View {
     @ObservedObject var coach: CoachViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var pulse = false
-    @State private var showCalibration = false
+    @State private var showConnectors = false
     @State private var showSummary = false
 
     private var level: RiskLevel {
@@ -209,7 +211,7 @@ struct LiveGuardView: View {
             withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) { pulse = true }
         }
         .onDisappear { coach.closeLiveGuard() }
-        .sheet(isPresented: $showCalibration) { TipSizeSheet(coach: coach) }
+        .sheet(isPresented: $showConnectors) { ConnectorsSheet() }
         .sheet(isPresented: $showSummary) { SafetySummaryView(coach: coach).presentationDetents([.medium, .large]) }
     }
 
@@ -222,9 +224,9 @@ struct LiveGuardView: View {
             Spacer()
             chip(coach.band.connected ? "Band on" : "Band off", symbol: "applewatch.radiowaves.left.and.right",
                  tint: coach.band.connected ? .green : .secondary)
-            Button { showCalibration = true } label: {
-                chip(coach.sterileTipSizeMM.map { String(format: "Tip %.1f mm", $0) } ?? "Set tip", symbol: "ruler",
-                     tint: coach.sterileTipSizeMM == nil ? .orange : .secondary)
+            Button { showConnectors = true } label: {
+                chip(coach.observation.referenceTip.map { String(format: "%@ %.0f mm", $0.name, $0.sizeMM) } ?? "Tips 8 / 13 mm",
+                     symbol: "ruler", tint: .secondary)
             }
             Button { showSummary = true } label: {
                 Image(systemName: "chart.bar.doc.horizontal").font(.headline).frame(width: 40, height: 40)
@@ -243,15 +245,11 @@ struct LiveGuardView: View {
             switch coach.guardState {
             case .cameraStarting:
                 hint("camera.fill", "Starting camera…", "Prop your phone so it can see the sterile tip and your hands.")
-            case .needsCalibration:
-                hint("ruler.fill", "Set your tip size once", "Measure the sterile tip with a ruler so ArmGuard can turn pixels into millimetres.")
-                Button { showCalibration = true } label: {
-                    Text("Set tip size").font(.headline).frame(maxWidth: .infinity)
-                }.buttonStyle(.borderedProminent).controlSize(.large)
             case .lookingForTip:
-                hint("viewfinder", "Looking for the sterile tip", "Point the camera at the connector tip. Good, even light helps.")
+                hint("viewfinder", "Looking for a connector tip", "Point the camera at the blue or clear connector tip. Good, even light helps.")
             case .lookingForHand:
-                hint("hand.point.up.left.fill", "Sterile tip found", "Distance shows as soon as your hand is in view.")
+                hint("hand.point.up.left.fill", coach.observation.referenceTip.map { "\($0.name) found" } ?? "Connector tip found",
+                     "Distance shows as soon as your hand is in view.")
             case .measuring(let level, let mm):
                 HStack(alignment: .firstTextBaseline) {
                     Label(level.title, systemImage: level.symbol)
@@ -304,55 +302,47 @@ struct StatTile: View {
     }
 }
 
-// MARK: - Tip size
+// MARK: - Connectors (fixed sizes, read-only)
 
-struct TipSizeSheet: View {
-    @ObservedObject var coach: CoachViewModel
+extension ConnectorTip {
+    var tint: Color { self == .blue ? .blue : Color(red: 0.85, green: 0.9, blue: 0.95) }
+}
+
+struct ConnectorsSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var text = ""
 
     var body: some View {
         NavigationStack {
-            Form {
+            List {
                 Section {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Image(systemName: "ruler").font(.largeTitle).foregroundStyle(.tint)
-                        Text("Measure the sterile connector tip").font(.title3.bold())
-                        Text("Use a ruler across the tip's longest side, as the camera sees it. ArmGuard uses this size as its scale to turn pixels into millimetres.")
-                            .foregroundStyle(.secondary)
-                    }.padding(.vertical, 6)
-                }
-                Section("Tip size") {
-                    HStack {
-                        TextField("e.g. 8", text: $text).keyboardType(.decimalPad).font(.title2.monospacedDigit())
-                        Text("mm").foregroundStyle(.secondary)
+                    ForEach(ConnectorTip.allCases, id: \.self) { tip in
+                        HStack(spacing: 14) {
+                            ZStack {
+                                Circle().fill(tip == .blue ? Color.blue : Color.white.opacity(0.9))
+                                if tip == .clear { Circle().stroke(Color.red, lineWidth: 4) }
+                            }.frame(width: 36, height: 36).shadow(color: .black.opacity(0.15), radius: 2)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(tip == .blue ? "Blue tip" : "Clear tip, red tubing").font(.headline)
+                                Text(tip == .blue ? "Measured at its tip" : "Measured at the very top").font(.footnote).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(String(format: "%.0f mm", tip.sizeMM)).font(.title3.bold().monospacedDigit())
+                        }.padding(.vertical, 4)
                     }
+                } header: { Text("Your connectors") } footer: {
+                    Text("These sizes are fixed. ArmGuard tells the tips apart by colour and uses the tip's real size to turn pixels into millimetres.")
                 }
                 Section {
                     zoneRow(.high, "Within \(Int(GuardThresholds.high)) mm", "Red warning, continuous vibration")
                     zoneRow(.medium, "Within \(Int(GuardThresholds.medium)) mm", "Orange warning, pulsing vibration")
                     zoneRow(.none, "Farther away", "No warning")
                 } header: { Text("Warning zones") } footer: {
-                    Text("Experimental 2D estimate from the camera. It cannot confirm contact or sterility.")
-                }
-                if coach.sterileTipSizeMM != nil {
-                    Button("Turn off distance warnings", role: .destructive) { coach.sterileTipSizeMM = nil; dismiss() }
+                    Text("Measured from your nearest fingertip to the nearest edge of the tip. Experimental 2D estimate; it cannot confirm contact or sterility.")
                 }
             }
-            .navigationTitle("Tip size").navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { coach.sterileTipSizeMM = value; dismiss() }.disabled(value == nil)
-                }
-            }
-            .onAppear { text = coach.sterileTipSizeMM.map { String(format: "%g", $0) } ?? "" }
+            .navigationTitle("Connectors").navigationBarTitleDisplayMode(.inline)
+            .toolbar { Button("Done") { dismiss() } }
         }
-    }
-
-    private var value: Double? {
-        let parsed = Double(text.replacingOccurrences(of: ",", with: "."))
-        return parsed.flatMap { $0 > 0 && $0 < 100 ? $0 : nil }
     }
 
     private func zoneRow(_ level: RiskLevel, _ title: String, _ detail: String) -> some View {
@@ -399,7 +389,7 @@ struct SafetySummaryCard: View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Your safety summary", systemImage: "chart.bar.doc.horizontal").font(.headline)
             if stats.measuredSeconds < 1 {
-                Text("No distance measured yet. Set your tip size and keep the tip and a hand in view.")
+                Text("No distance measured yet. Open Live Guard and keep a connector tip and a hand in view.")
                     .foregroundStyle(.secondary)
             } else {
                 Grid(horizontalSpacing: 10, verticalSpacing: 10) {

@@ -50,8 +50,8 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
     private var retryTimer: Timer?
     private var listeningLimit: Timer?
     private var recognitionFailures = 0
-    static let nearCue = "Your fingers are close to the opening. Pause and move them away."
-    static let highCue = "Stop. Your fingers are very close to the sterile tip. Move them away now."
+    static let nearCue = "Medium risk. Your fingers are getting close to the sterile tip. Slow down and keep a gap."
+    static let highCue = "High risk. Stop. Move your fingers away from the sterile tip now."
     static let reviewCue = "Your hand overlaps the opening in the image. Pause and follow your dialysis team's instructions about possible contact."
     static let viewLostCue = "I've lost a clear view. We're paused. Restore the view, then say resume."
 

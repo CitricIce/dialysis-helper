@@ -306,3 +306,50 @@ public enum RFDETRDecoding {
         return detections
     }
 }
+
+/// Per-session safety statistics for the summary screen and care-team share.
+/// Practice feedback only: counts and times, not a sterility or cleanliness score.
+public struct SafetyStats: Equatable {
+    public private(set) var mediumAlerts = 0
+    public private(set) var highAlerts = 0
+    public private(set) var closestMM: Double?
+    /// Seconds with a live distance measurement (calibrated, fresh, hand and tip in view).
+    public private(set) var measuredSeconds = 0.0
+    public private(set) var warningSeconds = 0.0
+    public private(set) var longestSafeStreak = 0.0
+    private var level: RiskLevel = .none
+    private var lastTime: Double?
+    private var safeStreak = 0.0
+
+    public init() {}
+
+    /// Seconds measured outside any warning zone, as a fraction of measured time (nil before any).
+    public var safeFraction: Double? {
+        measuredSeconds > 0 ? max(0, measuredSeconds - warningSeconds) / measuredSeconds : nil
+    }
+    public var alertCount: Int { mediumAlerts + highAlerts }
+
+    /// Call often (every result / 100 ms). Gaps over 1 s are not counted as measured time.
+    public mutating func record(level newLevel: RiskLevel, distanceMM: Double?, at time: Double, measuring: Bool) {
+        defer { lastTime = measuring ? time : nil }
+        guard measuring, let distanceMM, distanceMM.isFinite, distanceMM >= 0 else {
+            level = .none; safeStreak = 0; return
+        }
+        closestMM = min(closestMM ?? distanceMM, distanceMM)
+        if newLevel > level {
+            if newLevel == .high { highAlerts += 1 } else { mediumAlerts += 1 }
+        }
+        if let lastTime, time > lastTime, time - lastTime <= 1 {
+            let dt = time - lastTime
+            measuredSeconds += dt
+            if newLevel == .none {
+                safeStreak += dt
+                longestSafeStreak = max(longestSafeStreak, safeStreak)
+            } else {
+                warningSeconds += dt
+                safeStreak = 0
+            }
+        }
+        level = newLevel
+    }
+}

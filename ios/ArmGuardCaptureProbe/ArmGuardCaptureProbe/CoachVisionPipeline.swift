@@ -32,6 +32,9 @@ struct CoachVisionSnapshot {
     var mmPerPixel: Double?
     var closestHand: SensorPoint?
     var closestSurface: SensorPoint?
+    /// Sensor image size in pixels (landscape), so overlays can draw millimetre zones to scale.
+    var imagePixelWidth = 0.0
+    var imagePixelHeight = 0.0
 }
 
 final class CoachVisionPipeline {
@@ -239,10 +242,11 @@ final class CoachVisionPipeline {
             result.provider = hasCustomTips ? "Custom fingertips + Apple coverage/fallback" : "Apple Vision pretrained fingertips"
             // SPINOSAURUS method: tip size -> mm/px -> fingertip-to-tip-edge distance -> MEDIUM/HIGH.
             // Uncalibrated (no tip size entered) it stays image-space only and returns .none.
+            result.imagePixelWidth = Double(CVPixelBufferGetWidth(frame.capturedImage))
+            result.imagePixelHeight = Double(CVPixelBufferGetHeight(frame.capturedImage))
             let measurement = ScaleProximity.measure(
                 fingertips: result.fingertips, hands: result.hands, regions: result.regions,
-                imageWidth: Double(CVPixelBufferGetWidth(frame.capturedImage)),
-                imageHeight: Double(CVPixelBufferGetHeight(frame.capturedImage)))
+                imageWidth: result.imagePixelWidth, imageHeight: result.imagePixelHeight)
             result.scaleRisk = scaleTracker.update(measurement)
             result.distanceMM = scaleTracker.distanceMM
             result.mmPerPixel = scaleTracker.mmPerPixel

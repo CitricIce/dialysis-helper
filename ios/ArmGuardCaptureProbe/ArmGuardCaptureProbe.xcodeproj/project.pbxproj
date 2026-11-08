@@ -25,6 +25,7 @@
 		96606D756459ECA09302D94E /* Core/Sources/CaptureProbeCore/DepthAnalysis.swift in Sources */ = {isa = PBXBuildFile; fileRef = 648EE394600C911B51900919 /* Core/Sources/CaptureProbeCore/DepthAnalysis.swift */; };
 		A6111F3ABF01D5922F07FBB3 /* ArmGuardCaptureProbe/BandClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FF163264747DA55E9697DE5 /* ArmGuardCaptureProbe/BandClient.swift */; };
 		B586B71CF27896912B22D59F /* Core/Sources/CaptureProbeCore/ProximityEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 175B91E4AF061CBF18128D5C /* Core/Sources/CaptureProbeCore/ProximityEngine.swift */; };
+		5E7E21A0C0DE0000000000B2 /* ArmGuardCaptureProbe/LiveGuardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E7E21A0C0DE0000000000B1 /* ArmGuardCaptureProbe/LiveGuardView.swift */; };
 		BD664C21B6FD2E40DF14C127 /* ArmGuardCaptureProbe/RoutineCoachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F541673ABDFD9AD901C9C03 /* ArmGuardCaptureProbe/RoutineCoachView.swift */; };
 /* End PBXBuildFile section */
 
@@ -36,6 +37,7 @@
 		00127F63DA98FE217FFC8563 /* ArmGuardCaptureProbe/CaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/CaptureController.swift; sourceTree = "<group>"; };
 		112628D3256418F90BF96911 /* Core/Sources/CaptureProbeCore/RoutineEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Sources/CaptureProbeCore/RoutineEngine.swift; sourceTree = "<group>"; };
 		175B91E4AF061CBF18128D5C /* Core/Sources/CaptureProbeCore/ProximityEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Sources/CaptureProbeCore/ProximityEngine.swift; sourceTree = "<group>"; };
+		5E7E21A0C0DE0000000000B1 /* ArmGuardCaptureProbe/LiveGuardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/LiveGuardView.swift; sourceTree = "<group>"; };
 		1F541673ABDFD9AD901C9C03 /* ArmGuardCaptureProbe/RoutineCoachView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/RoutineCoachView.swift; sourceTree = "<group>"; };
 		2E353D68BE52B76DE85B8C26 /* ArmGuardCaptureProbe/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = ArmGuardCaptureProbe/Info.plist; sourceTree = "<group>"; };
 		354040B8177FA97B95958357 /* ArmGuardCaptureProbe/CoachSpeech.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/CoachSpeech.swift; sourceTree = "<group>"; };
@@ -76,6 +78,7 @@
 				AE2DB2DE474FA2F841A285ED /* ArmGuardCaptureProbe/CoachViewModel.swift */,
 				41CB919928E374BCECBDB6BF /* ArmGuardCaptureProbe/CartesiaConversation.swift */,
 				1F541673ABDFD9AD901C9C03 /* ArmGuardCaptureProbe/RoutineCoachView.swift */,
+				5E7E21A0C0DE0000000000B1 /* ArmGuardCaptureProbe/LiveGuardView.swift */,
 				4FF163264747DA55E9697DE5 /* ArmGuardCaptureProbe/BandClient.swift */,
 				354040B8177FA97B95958357 /* ArmGuardCaptureProbe/CoachSpeech.swift */,
 				112628D3256418F90BF96911 /* Core/Sources/CaptureProbeCore/RoutineEngine.swift */,
@@ -178,6 +181,7 @@
 				00B9A21A26DE9052AF87403C /* ArmGuardCaptureProbe/CoachViewModel.swift in Sources */,
 				5B86D5ECD60A250009BC5B88 /* ArmGuardCaptureProbe/CartesiaConversation.swift in Sources */,
 				BD664C21B6FD2E40DF14C127 /* ArmGuardCaptureProbe/RoutineCoachView.swift in Sources */,
+				5E7E21A0C0DE0000000000B2 /* ArmGuardCaptureProbe/LiveGuardView.swift in Sources */,
 				A6111F3ABF01D5922F07FBB3 /* ArmGuardCaptureProbe/BandClient.swift in Sources */,
 				19B06F301C3B561BC74256C4 /* ArmGuardCaptureProbe/CoachSpeech.swift in Sources */,
 				56291088B650BC7F59909CD2 /* Core/Sources/CaptureProbeCore/RoutineEngine.swift in Sources */,

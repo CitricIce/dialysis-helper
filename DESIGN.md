@@ -1,5 +1,35 @@
 # ArmGuard PD: software and feedback design
 
+## Consumer UI, Live Guard and safety summary (November 8)
+
+The app was redesigned for patients rather than developers (code: `LiveGuardView.swift`,
+`RoutineCoachView.swift`, `SafetyStats` in `ProximityEngine.swift`).
+
+- **Home:** a setup checklist (tip size, wristband, voice coach; each row opens its
+  setup step), a **Live Guard** card, and one **Start guided practice** button. It uses
+  Cartesia if configured, otherwise the phone voice. Developer tools, including the
+  camera + model test, moved to the gear → **Settings → Developer tools**.
+- **Live Guard:** a full-screen live camera view (works with or without a routine) with
+  an overlay on the analysed frame: the sterile tip box and its centre, safe zones
+  drawn at the real 30 mm (red) and 80 mm (orange) distances from the tip's edge,
+  fingertips, hand boxes, and the closest gap line with its mm reading. A status card
+  shows **SAFE / MEDIUM RISK / HIGH RISK**, the distance, a 0–120 mm gauge, and step
+  guidance (set tip size → looking for tip → show your hand). A risk-coloured border
+  pulses on HIGH RISK. Chips show the band connection and tip size.
+- **Distance metric:** fingertip to the tip's **nearest edge**, not its centre.
+  Contamination happens at any part of the tip, and centre distance would overstate
+  the gap by half the tip's size. The centre is only marked for orientation.
+- **Explicit warnings:** the banner reads "HIGH RISK · 18 mm" or "MEDIUM RISK · 52 mm" with
+  advice. Spoken cues start with "High risk." / "Medium risk."
+- **Safety summary:** per session, it counts medium/high warnings (escalations), the
+  closest approach, measured time, time outside warning zones and the longest stretch
+  without a warning. It's shown in Live Guard and on the finished-practice screen,
+  with **Share with my care team** (plain text). It's practice feedback, not a sterility
+  or cleanliness score. Stats reset at each practice start, on New practice, or manually.
+- **Verified:** portable checks (new `SafetyStats` check) and the unsigned iPhone build.
+  **Not verified:** the look on a real iPhone, overlay alignment on live frames,
+  zone-size accuracy against a ruler.
+
 ## Camera-distance warnings: on after tip calibration (November 8)
 
 Changed at the user's request. The SPINOSAURUS-style image-scale method now drives
@@ -228,7 +258,7 @@ questions, pause/reconnect, natural confirmation and conversational progression.
 
 ## Camera-only and routine debugging (November 8)
 
-**Test camera + model** on the home screen opens an independent controller with
+**Camera + model test** (Settings → Developer tools) opens an independent controller with
 ARKit capture and the actual bundled detector/Apple fingertips. It owns no speech,
 conversation, routine or BLE client. The parent coach pauses and cancels voice
 work on entry; leaving the test does not resume it. Capture stops on Done or
@@ -507,7 +537,7 @@ local vision/alert path. Dynamic voice connects directly to Cartesia by default;
 
 | Layer | Native choice | Design consequence |
 | --- | --- | --- |
-| App/UI | Swift + SwiftUI, native camera preview/overlay | Spoken-step screen plus direct camera/model test; debug step picker and native readiness/review gates; setup behind a gear menu |
+| App/UI | Swift + SwiftUI, native camera preview/overlay | Consumer home with setup checklist, full-screen Live Guard overlay, safety summary; camera/model test and debug step picker under Settings → Developer tools; native readiness/review gates |
 | Earlier RGB/depth option | AVFoundation video/depth outputs and AVCaptureDataOutputSynchronizer | Process paired frames with timestamps and calibration; begin from Apple's capture sample |
 | Hand model | Vision VNDetectHumanHandPoseRequest, maximumHandCount=2 | Built-in hand-pose detection; no custom training or Python runtime; validate this detector rather than assuming MediaPipe results transfer |
 | Alternative prop markers | ArUco via OpenCV iOS and a thin Objective-C++ bridge | Preserve existing marker IDs and measured prop profiles; native integration is work but requires no model training |

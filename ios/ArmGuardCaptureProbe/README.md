@@ -1,5 +1,35 @@
 # ArmGuard native practice coach and capture test
 
+## Consumer UI, Live Guard and safety summary (November 8)
+
+The app was redesigned for patients rather than developers (code: `LiveGuardView.swift`,
+`RoutineCoachView.swift`, `SafetyStats` in `ProximityEngine.swift`).
+
+- **Home:** a setup checklist (tip size, wristband, voice coach; each row opens its
+  setup step), a **Live Guard** card, and one **Start guided practice** button. It uses
+  Cartesia if configured, otherwise the phone voice. Developer tools, including the
+  camera + model test, moved to the gear → **Settings → Developer tools**.
+- **Live Guard:** a full-screen live camera view (works with or without a routine) with
+  an overlay on the analysed frame: the sterile tip box and its centre, safe zones
+  drawn at the real 30 mm (red) and 80 mm (orange) distances from the tip's edge,
+  fingertips, hand boxes, and the closest gap line with its mm reading. A status card
+  shows **SAFE / MEDIUM RISK / HIGH RISK**, the distance, a 0–120 mm gauge, and step
+  guidance (set tip size → looking for tip → show your hand). A risk-coloured border
+  pulses on HIGH RISK. Chips show the band connection and tip size.
+- **Distance metric:** fingertip to the tip's **nearest edge**, not its centre.
+  Contamination happens at any part of the tip, and centre distance would overstate
+  the gap by half the tip's size. The centre is only marked for orientation.
+- **Explicit warnings:** the banner reads "HIGH RISK · 18 mm" or "MEDIUM RISK · 52 mm" with
+  advice. Spoken cues start with "High risk." / "Medium risk."
+- **Safety summary:** per session, it counts medium/high warnings (escalations), the
+  closest approach, measured time, time outside warning zones and the longest stretch
+  without a warning. It's shown in Live Guard and on the finished-practice screen,
+  with **Share with my care team** (plain text). It's practice feedback, not a sterility
+  or cleanliness score. Stats reset at each practice start, on New practice, or manually.
+- **Verified:** portable checks (new `SafetyStats` check) and the unsigned iPhone build.
+  **Not verified:** the look on a real iPhone, overlay alignment on live frames,
+  zone-size accuracy against a ruler.
+
 ## Camera-distance warnings: on after tip calibration (November 8)
 
 Changed at the user's request. The SPINOSAURUS-style image-scale method now drives
@@ -97,8 +127,9 @@ unrelated tools/configuration. No account login or new agent ID is required.
 files type-checked against actual Catalyst frameworks passed. Phone microphone,
 conversational behavior and iPhone SDK build still need full Xcode/the device.
 
-The home screen offers practice coaching and **Test camera + model**, a separate
-camera-only detector test that needs no voice setup. The bundled RF-DETR Small
+The home screen offers a setup checklist, **Live Guard** and guided practice coaching.
+**Settings → Developer tools → Camera + model test** is a separate camera-only
+detector test that needs no voice setup. The bundled RF-DETR Small
 model detects hands and protected connector tips; Apple Vision supplies fingertips.
 The original RGB/LiDAR hardware test remains under the gear menu > Developer tools.
 Practice coaching adds label OCR, BLE and Cartesia conversation with phone-voice
@@ -128,7 +159,8 @@ physical warning latency still need full Xcode and a phone.
 4. Plug the **iPhone 15 Pro** into the Mac, unlock it and accept Trust/Pair prompts.
    Enable **Settings > Privacy & Security > Developer Mode** if prompted, then
    restart/confirm on the phone. Select the physical phone as the run destination.
-5. Press **Run** (Command-R), tap **Test camera + model**, and allow Camera access.
+5. Press **Run** (Command-R), open **Settings → Developer tools → Camera + model test**
+   (or **Live Guard** on the home screen), and allow Camera access.
    Capture and actual model inference start automatically. For the original
    two-pane RGB/depth test, open the gear menu > Developer tools >
    **Camera and depth test**, then tap **Start camera**.
@@ -146,7 +178,7 @@ Keep signing certificates, provisioning profiles and account authentication loca
 
 ## Camera + model: first phone test
 
-1. Tap **Test camera + model** on the home screen. No key, microphone access,
+1. Open **Settings → Developer tools → Camera + model test**. No key, microphone access,
    routine answers or wristband connection is required. Opening it pauses any
    active coach session and stops voice/vibration; it does not resume them on exit.
 2. Mount the phone in portrait over disconnected training props. Put a real-looking

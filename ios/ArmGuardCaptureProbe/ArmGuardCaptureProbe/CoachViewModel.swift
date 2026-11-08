@@ -25,6 +25,8 @@ final class CoachViewModel: ObservableObject {
         return value.isFinite && value > 0 ? value : nil
     }
     @Published private(set) var session: RoutineSession?
+    @Published private(set) var stats = SafetyStats()
+    @Published private(set) var statsStarted = Date()
     @Published private(set) var observation = CoachVisionSnapshot()
     @Published var selectedSlot = "Exchange 1"
     @Published var response = ""
@@ -155,6 +157,44 @@ final class CoachViewModel: ObservableObject {
         let label = distanceRisk == .high ? "HIGH" : distanceRisk == .medium ? "MEDIUM" : "clear"
         return String(format: "Camera distance %.0f mm · %@ · experimental", mm, label)
     }
+
+    /// What the Live Guard screen should tell the user right now, in priority order.
+    enum GuardState: Equatable {
+        case cameraStarting, needsCalibration, lookingForTip, lookingForHand
+        case measuring(RiskLevel, Double)
+    }
+    var guardState: GuardState {
+        guard capture.isRunning, displayFresh else { return .cameraStarting }
+        guard sterileTipSizeMM != nil else { return .needsCalibration }
+        guard !observation.regions.isEmpty else { return .lookingForTip }
+        guard fresh, let mm = observation.distanceMM else { return .lookingForHand }
+        return .measuring(distanceRisk, mm)
+    }
+    func resetStats() { stats = SafetyStats(); statsStarted = Date() }
+    /// Opening Live Guard starts the camera; distance warnings, band and voice work without a routine.
+    func openLiveGuard() { if !capture.isRunning && !capture.isStarting { startCamera() } }
+    func closeLiveGuard() {
+        // An active routine keeps its camera; otherwise stop it so nothing keeps watching.
+        guard session?.phase == .idle || ended else { return }
+        vision.setActive(false); capture.stop(reason: "Camera stopped"); band.stop()
+    }
+    var summaryText: String {
+        let date = statsStarted.formatted(date: .abbreviated, time: .shortened)
+        let measured = Int(stats.measuredSeconds.rounded())
+        var lines = ["ArmGuard practice summary · \(date)"]
+        if measured == 0 {
+            lines.append("No distance was measured (set the tip size and keep the tip and a hand in view).")
+        } else {
+            lines.append("Distance measured for \(measured / 60) min \(measured % 60) s")
+            if let closest = stats.closestMM { lines.append(String(format: "Closest approach to the sterile tip: %.0f mm", closest)) }
+            lines.append("Warnings: \(stats.highAlerts) high risk (≤ 30 mm), \(stats.mediumAlerts) medium risk (≤ 80 mm)")
+            if let safe = stats.safeFraction { lines.append(String(format: "Time outside warning zones: %.0f%%", safe * 100)) }
+            lines.append(String(format: "Longest stretch without a warning: %.0f s", stats.longestSafeStreak))
+        }
+        if session?.reviewRequired == true { lines.append("A possible-contact review was flagged during practice.") }
+        lines.append("Practice feedback from a 2D camera estimate. It does not confirm contact or sterility.")
+        return lines.joined(separator: "\n")
+    }
     var riskText: String {
         guard fresh else { return "Observation unavailable or older than 250 ms" }
         switch observation.decision {
@@ -193,7 +233,10 @@ final class CoachViewModel: ObservableObject {
     }
     var cameraMessage: String {
         if session?.reviewRequired == true { return "Possible contact needs review" }
-        if session?.template.detectorStatus != .experimental { return "Low-accuracy model preview · practice only · proximity warnings off" }
+        if session?.template.detectorStatus != .experimental {
+            return sterileTipSizeMM == nil ? "Practice preview · set the tip size to turn on distance warnings"
+                                           : "Practice preview · camera distance warnings on (experimental)"
+        }
         if !observation.modelInstalled { return observation.modelStatus }
         if session?.phase == .monitoring { return "Camera watching" }
         return "Camera needs a clear view before watching"
@@ -205,6 +248,7 @@ final class CoachViewModel: ObservableObject {
             return
         }
         ended = false; voiceEnabled = true
+        resetStats()
         session?.start(); persist()
         message = currentPrompt
         startCamera()
@@ -225,6 +269,7 @@ final class CoachViewModel: ObservableObject {
         guard let template = session?.template else { return }
         session = try? RoutineSession(template: template)
         runID = UUID(); logURL = nil; response = ""; scannedLabel = ""; ended = false
+        resetStats()
         message = "Start when you're ready for another practice."
     }
     func startCamera() { vision.setActive(true); capture.start() }
@@ -501,6 +546,8 @@ final class CoachViewModel: ObservableObject {
         let level = distanceRisk
         defer { lastDistanceRisk = level }
         let now = ProcessInfo.processInfo.systemUptime
+        stats.record(level: level, distanceMM: observation.distanceMM, at: now,
+                     measuring: sterileTipSizeMM != nil && fresh && observation.distanceMM != nil)
         switch level {
         case .high:
             band.set(intensity: 255, suspected: true)

@@ -1,5 +1,35 @@
 # Optional hosted Cartesia gateway
 
+## Consumer UI, Live Guard and safety summary (November 8)
+
+The app was redesigned for patients rather than developers (code: `LiveGuardView.swift`,
+`RoutineCoachView.swift`, `SafetyStats` in `ProximityEngine.swift`).
+
+- **Home:** a setup checklist (tip size, wristband, voice coach; each row opens its
+  setup step), a **Live Guard** card, and one **Start guided practice** button. It uses
+  Cartesia if configured, otherwise the phone voice. Developer tools, including the
+  camera + model test, moved to the gear → **Settings → Developer tools**.
+- **Live Guard:** a full-screen live camera view (works with or without a routine) with
+  an overlay on the analysed frame: the sterile tip box and its centre, safe zones
+  drawn at the real 30 mm (red) and 80 mm (orange) distances from the tip's edge,
+  fingertips, hand boxes, and the closest gap line with its mm reading. A status card
+  shows **SAFE / MEDIUM RISK / HIGH RISK**, the distance, a 0–120 mm gauge, and step
+  guidance (set tip size → looking for tip → show your hand). A risk-coloured border
+  pulses on HIGH RISK. Chips show the band connection and tip size.
+- **Distance metric:** fingertip to the tip's **nearest edge**, not its centre.
+  Contamination happens at any part of the tip, and centre distance would overstate
+  the gap by half the tip's size. The centre is only marked for orientation.
+- **Explicit warnings:** the banner reads "HIGH RISK · 18 mm" or "MEDIUM RISK · 52 mm" with
+  advice. Spoken cues start with "High risk." / "Medium risk."
+- **Safety summary:** per session, it counts medium/high warnings (escalations), the
+  closest approach, measured time, time outside warning zones and the longest stretch
+  without a warning. It's shown in Live Guard and on the finished-practice screen,
+  with **Share with my care team** (plain text). It's practice feedback, not a sterility
+  or cleanliness score. Stats reset at each practice start, on New practice, or manually.
+- **Verified:** portable checks (new `SafetyStats` check) and the unsigned iPhone build.
+  **Not verified:** the look on a real iPhone, overlay alignment on live frames,
+  zone-size accuracy against a ruler.
+
 ## Camera-distance warnings: on after tip calibration (November 8)
 
 Changed at the user's request. The SPINOSAURUS-style image-scale method now drives
@@ -116,7 +146,7 @@ the owner. Live API tests passed on November 7, 2026: authorized key/voice looku
 ## Camera and routine debugging (November 8, 2026)
 
 Camera-only testing needs no gateway, Cartesia credentials or voice session.
-Rebuild and tap **Test camera + model** on the home screen. It runs the actual
+Rebuild and open **Settings → Developer tools → Camera + model test**. It runs the actual
 bundled detector, fingertip tracking and depth with boxes/confidence/timing; it
 pauses the parent coach and produces no voice or vibration warnings.
 

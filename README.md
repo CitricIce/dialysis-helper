@@ -1,5 +1,35 @@
 # Dialysis Helper
 
+## Consumer UI, Live Guard and safety summary (November 8)
+
+The app was redesigned for patients rather than developers (code: `LiveGuardView.swift`,
+`RoutineCoachView.swift`, `SafetyStats` in `ProximityEngine.swift`).
+
+- **Home:** a setup checklist (tip size, wristband, voice coach; each row opens its
+  setup step), a **Live Guard** card, and one **Start guided practice** button. It uses
+  Cartesia if configured, otherwise the phone voice. Developer tools, including the
+  camera + model test, moved to the gear → **Settings → Developer tools**.
+- **Live Guard:** a full-screen live camera view (works with or without a routine) with
+  an overlay on the analysed frame: the sterile tip box and its centre, safe zones
+  drawn at the real 30 mm (red) and 80 mm (orange) distances from the tip's edge,
+  fingertips, hand boxes, and the closest gap line with its mm reading. A status card
+  shows **SAFE / MEDIUM RISK / HIGH RISK**, the distance, a 0–120 mm gauge, and step
+  guidance (set tip size → looking for tip → show your hand). A risk-coloured border
+  pulses on HIGH RISK. Chips show the band connection and tip size.
+- **Distance metric:** fingertip to the tip's **nearest edge**, not its centre.
+  Contamination happens at any part of the tip, and centre distance would overstate
+  the gap by half the tip's size. The centre is only marked for orientation.
+- **Explicit warnings:** the banner reads "HIGH RISK · 18 mm" or "MEDIUM RISK · 52 mm" with
+  advice. Spoken cues start with "High risk." / "Medium risk."
+- **Safety summary:** per session, it counts medium/high warnings (escalations), the
+  closest approach, measured time, time outside warning zones and the longest stretch
+  without a warning. It's shown in Live Guard and on the finished-practice screen,
+  with **Share with my care team** (plain text). It's practice feedback, not a sterility
+  or cleanliness score. Stats reset at each practice start, on New practice, or manually.
+- **Verified:** portable checks (new `SafetyStats` check) and the unsigned iPhone build.
+  **Not verified:** the look on a real iPhone, overlay alignment on live frames,
+  zone-size accuracy against a ruler.
+
 ## Camera-distance warnings: on after tip calibration (November 8)
 
 Changed at the user's request. The SPINOSAURUS-style image-scale method now drives
@@ -110,7 +140,7 @@ the iPhone; the earlier Mac/Continuity Camera stack remains an alternative.
 The [native iPhone prototype](ios/ArmGuardCaptureProbe/README.md) now includes
 practice routines, on-device hand tracking, label OCR, a Core ML detector adapter,
 BLE feedback and a continuous Cartesia voice conversation with a phone-voice
-fallback. Use **Test camera + model** on the home screen to run detection without voice,
+fallback. Use **Settings → Developer tools → Camera + model test** to run detection without voice,
 routine checks or vibration. It needs no Cartesia key or internet. The original
 camera/LiDAR hardware test is under Developer tools in setup. The teammate's
 RF-DETR Small protected-tip model is included and compiled by Xcode. Its detection
@@ -138,7 +168,7 @@ the dedicated agent and tools through the API without the account owner's login.
 
 ## Camera-only debugging (November 8, 2026)
 
-After rebuilding, tap **Test camera + model**. It starts the actual bundled
+After rebuilding, open **Settings → Developer tools → Camera + model test**. It starts the actual bundled
 RF-DETR detector and Apple fingertips, showing boxes, class confidence, LiDAR
 status, completed-result rate and frame age. Boxes use the exact analysed frame.
 A confidence slider affects only this test; stale results are marked and dimmed.

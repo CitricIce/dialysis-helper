@@ -10,6 +10,9 @@ struct RoutineCoachView: View {
     @State private var showSettings = false
     @State private var showCapture = false
     @State private var showModelDebug = false
+    @State private var showLiveGuard = false
+    @State private var showTipSize = false
+    @State private var showSummary = false
     @State private var debugCheckID = ""
     @State private var showTyping = false
     @State private var showReset = false
@@ -17,81 +20,32 @@ struct RoutineCoachView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    HStack {
-                        Text("Practice with ArmGuard").font(.subheadline).foregroundStyle(.secondary)
-                        Spacer()
-                        Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                            .accessibilityLabel("Voice and wristband setup")
-                    }
+                VStack(alignment: .leading, spacing: 20) {
                     if let session = coach.session {
-                        if session.phase == .idle {
-                            Text("Let's get ready.").font(.largeTitle.bold())
-                            Text("Set your phone in place. Once we start, you can talk to me as you go.")
-                                .font(.title3).foregroundStyle(.secondary)
-                            Text(session.template.protocolNote).font(.callout).foregroundStyle(.secondary)
-                            Picker("Practice", selection: $coach.selectedSlot) {
-                                ForEach(session.template.slots, id: \.self) { Text($0).tag($0) }
-                            }.pickerStyle(.menu)
-                            Button(coach.voiceConfigured ? "Start practice" : "Set up voice") {
-                                if coach.voiceConfigured { coach.start() } else { showSettings = true }
-                            }.buttonStyle(.borderedProminent).controlSize(.large)
-                            Text("Cartesia provides the conversational voice. Connect it before preparing your hands.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        } else {
-                            ProgressView(value: Double(session.checkIndex), total: Double(session.template.checks.count))
-                                .accessibilityLabel("Practice progress")
-                            Text(coach.ended ? "Session ended" : (session.currentCheck?.title ?? "Finished"))
-                                .font(.largeTitle.bold())
-                            voiceCard
-                            if session.reviewRequired {
-                                Label("Possible contact needs review", systemImage: "exclamationmark.octagon.fill")
-                                    .foregroundStyle(.red).font(.headline)
-                                Text("Follow your care team's instructions. The camera cannot confirm contact.")
-                            }
-                            if !coach.scannedLabel.isEmpty {
-                                Text("Visible label text").font(.headline)
-                                Text(coach.scannedLabel).textSelection(.enabled)
-                                Text("Compare it with your written instructions.").font(.footnote).foregroundStyle(.secondary)
-                            }
-                            if session.currentCheck?.responseKind == .monitoring || session.phase == .monitoring {
-                                cameraPreview
-                            }
-                            if coach.ended {
-                                Button("New practice") { showReset = true }.buttonStyle(.borderedProminent)
-                            } else {
-                                HStack(spacing: 20) {
-                                    if !coach.voiceEnabled {
-                                        Button("Resume voice") { coach.resumeVoice() }.buttonStyle(.borderedProminent)
-                                    } else if session.phase == .paused {
-                                        Button("Resume") { coach.resume() }.buttonStyle(.bordered)
-                                    } else {
-                                        Button("Pause") { coach.pause() }.buttonStyle(.bordered)
-                                    }
-                                    Button("End session") { coach.endSession() }.foregroundStyle(.secondary)
-                                }
-                                Button("Type instead") { showTyping = true }.font(.footnote)
-                            }
-                        }
+                        if session.phase == .idle { home(session) }
+                        else if coach.ended || session.phase == .completed || session.phase == .preparationOnly { finished(session) }
+                        else { inPractice(session) }
                     } else { Text(coach.message) }
-                    Button {
-                        coach.backgrounded(); showModelDebug = true
-                    } label: {
-                        Label("Test camera + model", systemImage: "viewfinder")
-                            .frame(maxWidth: .infinity)
-                    }.buttonStyle(.bordered).controlSize(.large)
-                    Text("Run detection without voice or routine checks.")
-                        .font(.footnote).foregroundStyle(.secondary)
                     if coach.debugControlsEnabled, let session = coach.session {
                         debugNavigation(session)
                     }
-                }.padding(24)
+                }.padding(20)
             }
-            .navigationTitle("ArmGuard").navigationBarTitleDisplayMode(.inline)
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("ArmGuard")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showSettings = true } label: { Image(systemName: "gearshape.fill") }
+                        .accessibilityLabel("Settings")
+                }
+            }
             .safeAreaInset(edge: .top) { riskBanner.padding(.horizontal) }
             .sheet(isPresented: $showSettings) { settings }
+            .sheet(isPresented: $showTipSize) { TipSizeSheet(coach: coach) }
+            .sheet(isPresented: $showSummary) { SafetySummaryView(coach: coach).presentationDetents([.medium, .large]) }
             .sheet(isPresented: $showCapture) { CaptureProbeView() }
             .fullScreenCover(isPresented: $showModelDebug) { ModelDebugView() }
+            .fullScreenCover(isPresented: $showLiveGuard) { LiveGuardView(coach: coach) }
             .sheet(isPresented: $showTyping) {
                 NavigationStack {
                     Form {
@@ -112,11 +66,134 @@ struct RoutineCoachView: View {
         .onDisappear { coach.backgrounded() }
     }
 
+    // MARK: Home
+
+    @ViewBuilder private func home(_ session: RoutineSession) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: "hand.raised.circle.fill")
+                .font(.system(size: 52)).foregroundStyle(.white, .teal)
+            Text("Keep the sterile tip safe").font(.largeTitle.bold())
+            Text("ArmGuard watches your hands during a PD exchange and warns you, on screen, out loud and on your wristband, before your fingers get too close.")
+                .font(.body).foregroundStyle(.secondary)
+        }
+
+        VStack(spacing: 0) {
+            setupRow("ruler.fill", "Tip size",
+                     detail: coach.sterileTipSizeMM.map { String(format: "%.1f mm · distance warnings on", $0) } ?? "Measure once with a ruler",
+                     done: coach.sterileTipSizeMM != nil) { showTipSize = true }
+            Divider().padding(.leading, 56)
+            setupRow("applewatch.radiowaves.left.and.right", "Wristband",
+                     detail: coach.band.connected ? "Connected · vibrates on warnings" : "Optional · tap to connect",
+                     done: coach.band.connected) { coach.band.connect() }
+            Divider().padding(.leading, 56)
+            setupRow("waveform", "Voice coach",
+                     detail: coach.voiceConfigured ? "Conversational voice ready" : "Phone voice ready · add Cartesia for questions",
+                     done: coach.voiceConfigured) { showSettings = true }
+        }
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
+
+        Button { showLiveGuard = true } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "viewfinder").font(.title).frame(width: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Live Guard").font(.title3.bold())
+                    Text("See the distance to the sterile tip, live").font(.subheadline).opacity(0.85)
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.headline)
+            }
+            .padding(18).foregroundStyle(.white)
+            .background(LinearGradient(colors: [.teal, .blue], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: RoundedRectangle(cornerRadius: 20))
+        }.buttonStyle(.plain)
+
+        VStack(spacing: 10) {
+            Button {
+                coach.voiceConfigured ? coach.start() : coach.start(usePhoneVoice: true)
+            } label: {
+                Label("Start guided practice", systemImage: "play.fill").font(.headline).frame(maxWidth: .infinity)
+            }.buttonStyle(.borderedProminent).controlSize(.large)
+            HStack {
+                Text("Exchange").foregroundStyle(.secondary)
+                Spacer()
+                Picker("Exchange", selection: $coach.selectedSlot) {
+                    ForEach(session.template.slots, id: \.self) { Text($0).tag($0) }
+                }.pickerStyle(.menu)
+            }.font(.subheadline)
+        }
+
+        Text(session.template.protocolNote).font(.footnote).foregroundStyle(.secondary)
+    }
+
+    private func setupRow(_ symbol: String, _ title: String, detail: String, done: Bool,
+                          action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: symbol).font(.title3).foregroundStyle(.teal).frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.headline).foregroundStyle(.primary)
+                    Text(detail).font(.footnote).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                    .font(.title3).foregroundStyle(done ? .green : .secondary)
+            }.padding(14).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+
+    // MARK: During practice
+
+    @ViewBuilder private func inPractice(_ session: RoutineSession) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Step \(min(session.checkIndex + 1, session.template.checks.count)) of \(session.template.checks.count)")
+                .font(.subheadline.bold()).foregroundStyle(.teal)
+            ProgressView(value: Double(session.checkIndex), total: Double(session.template.checks.count))
+                .tint(.teal).accessibilityLabel("Practice progress")
+            Text(session.currentCheck?.title ?? "Finished").font(.largeTitle.bold())
+        }
+        voiceCard
+        if session.reviewRequired {
+            Label("Possible contact needs review", systemImage: "exclamationmark.octagon.fill")
+                .foregroundStyle(.red).font(.headline)
+            Text("Follow your care team's instructions. The camera cannot confirm contact.")
+        }
+        if !coach.scannedLabel.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Label I can see", systemImage: "text.viewfinder").font(.headline)
+                Text(coach.scannedLabel).textSelection(.enabled)
+                Text("Compare it with your written instructions.").font(.footnote).foregroundStyle(.secondary)
+            }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        }
+        if session.currentCheck?.responseKind == .monitoring || session.phase == .monitoring {
+            cameraPreview
+        }
+        Button { showLiveGuard = true } label: {
+            Label("Open Live Guard", systemImage: "viewfinder").frame(maxWidth: .infinity)
+        }.buttonStyle(.bordered).controlSize(.large)
+        HStack(spacing: 12) {
+            if !coach.voiceEnabled {
+                Button { coach.resumeVoice() } label: { Label("Resume voice", systemImage: "mic.fill").frame(maxWidth: .infinity) }
+                    .buttonStyle(.borderedProminent)
+            } else if session.phase == .paused {
+                Button { coach.resume() } label: { Label("Resume", systemImage: "play.fill").frame(maxWidth: .infinity) }
+                    .buttonStyle(.borderedProminent)
+            } else {
+                Button { coach.pause() } label: { Label("Pause", systemImage: "pause.fill").frame(maxWidth: .infinity) }
+                    .buttonStyle(.bordered)
+            }
+            Button(role: .destructive) { coach.endSession() } label: { Text("End").frame(maxWidth: .infinity) }
+                .buttonStyle(.bordered)
+        }.controlSize(.large)
+        Button("Type instead of speaking") { showTyping = true }.font(.footnote).frame(maxWidth: .infinity)
+    }
+
     private var voiceCard: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             Label(coach.conversation.active ? coach.conversation.status : coach.speech.status,
                   systemImage: coach.conversation.active || coach.speech.isListening ? "waveform" : "mic")
                 .font(.subheadline).foregroundStyle(.secondary)
+                .symbolEffect(.variableColor.iterative, isActive: coach.conversation.active || coach.speech.isListening)
             Text(coach.conversation.active && !coach.conversation.lastReply.isEmpty
                  ? coach.conversation.lastReply : coach.message)
                 .font(.title3).fixedSize(horizontal: false, vertical: true)
@@ -126,34 +203,22 @@ struct RoutineCoachView: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.tint.opacity(0.07), in: RoundedRectangle(cornerRadius: 20))
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20))
     }
 
     private var cameraPreview: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let image = coach.observation.debugImage ?? coach.capture.snapshot.colorImage {
                 Image(decorative: image, scale: 1).resizable().scaledToFit()
-                    .overlay { if coach.observation.debugImage != nil { detectionOverlay } }
-                    .frame(maxHeight: 260).clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay { if coach.observation.debugImage != nil { GuardOverlay(coach: coach) } }
+                    .frame(maxHeight: 300).frame(maxWidth: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .onTapGesture { showLiveGuard = true }
             } else {
-                Text("Waiting for a camera frame").frame(maxWidth: .infinity, minHeight: 120)
-                    .background(.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
+                Label("Waiting for the camera", systemImage: "camera").frame(maxWidth: .infinity, minHeight: 140)
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
             }
-            Text(coach.capture.status).font(.caption)
-            Label(coach.cameraMessage, systemImage: "camera")
-                .font(.footnote).foregroundStyle(.secondary)
-            Text(coach.observation.modelStatus).font(.caption).textSelection(.enabled)
-            Text("\(coach.observation.detections.count) boxes · \(coach.observation.fingertips.count) fingertips · " +
-                 (coach.observationAge.map { String(format: "analysed frame %.0f ms old", $0 * 1000) } ?? "waiting for analysis"))
-                .font(.caption.monospacedDigit())
-            if !coach.displayFresh { Text("Analysis waiting, stopped or stale").font(.caption).foregroundStyle(.orange) }
-            if coach.session?.template.detectorStatus != .experimental {
-                HStack { Text("Preview confidence"); Spacer(); Text(String(format: "%.0f%%", coach.detectionConfidence * 100)) }
-                    .font(.caption)
-                Slider(value: $coach.detectionConfidence, in: 0.1...0.9, step: 0.05)
-                Text("Lower this to inspect weak predictions. The low-accuracy model does not control warnings.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+            Label(coach.cameraMessage, systemImage: "camera.viewfinder").font(.footnote).foregroundStyle(.secondary)
             if !coach.capture.isRunning {
                 Button("Start camera") { coach.startCamera() }.disabled(coach.capture.isStarting)
             }
@@ -162,59 +227,108 @@ struct RoutineCoachView: View {
                     if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                 }
             }
+            DisclosureGroup("Camera details") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(coach.capture.status)
+                    Text(coach.observation.modelStatus).textSelection(.enabled)
+                    Text("\(coach.observation.detections.count) boxes · \(coach.observation.fingertips.count) fingertips · " +
+                         (coach.observationAge.map { String(format: "analysed frame %.0f ms old", $0 * 1000) } ?? "waiting for analysis"))
+                        .monospacedDigit()
+                    if !coach.displayFresh { Text("Analysis waiting, stopped or stale").foregroundStyle(.orange) }
+                    if coach.session?.template.detectorStatus != .experimental {
+                        HStack { Text("Detection sensitivity"); Spacer(); Text(String(format: "%.0f%%", coach.detectionConfidence * 100)) }
+                        Slider(value: $coach.detectionConfidence, in: 0.1...0.9, step: 0.05)
+                    }
+                }.font(.caption)
+            }.font(.footnote)
         }
     }
+
+    // MARK: Finished
+
+    @ViewBuilder private func finished(_ session: RoutineSession) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: session.reviewRequired ? "exclamationmark.octagon.fill" : "checkmark.seal.fill")
+                .font(.system(size: 48)).foregroundStyle(session.reviewRequired ? .red : .green)
+            Text(session.reviewRequired ? "Practice paused for review" : "Practice complete").font(.largeTitle.bold())
+            if coach.ended { Text(coach.message).foregroundStyle(.secondary) }
+        }
+        if !coach.ended {
+            voiceCard
+            Button(role: .destructive) { coach.endSession() } label: { Text("End session").frame(maxWidth: .infinity) }
+                .buttonStyle(.bordered)
+        }
+        SafetySummaryCard(coach: coach)
+        ShareLink(item: coach.summaryText) {
+            Label("Share summary with my care team", systemImage: "square.and.arrow.up").frame(maxWidth: .infinity)
+        }.buttonStyle(.bordered).controlSize(.large)
+        Button { showReset = true } label: {
+            Label("New practice", systemImage: "arrow.counterclockwise").font(.headline).frame(maxWidth: .infinity)
+        }.buttonStyle(.borderedProminent).controlSize(.large)
+    }
+
+    // MARK: Warning banner
 
     @ViewBuilder private var riskBanner: some View {
         if coach.session?.reviewRequired == true || coach.riskLevel != .none {
             let review = coach.session?.reviewRequired == true
-            let high = review || coach.riskLevel == .high
-            let gap = coach.distanceRisk != .none ? coach.observation.distanceMM.map { String(format: " · %.0f mm", $0) } ?? "" : ""
-            Label(review ? "Pause and check for possible contact" : (high ? "Move your fingers away" : "Your fingers are getting close") + gap,
-                  systemImage: high ? "exclamationmark.octagon.fill" : "exclamationmark.triangle.fill")
-                .font(.headline).padding().frame(maxWidth: .infinity, alignment: .leading)
-                .foregroundStyle(high ? Color.white : Color.black)
-                .background(high ? Color.red : Color.orange, in: RoundedRectangle(cornerRadius: 12))
-                .accessibilityAddTraits(.updatesFrequently)
+            let level: RiskLevel = review ? .high : coach.riskLevel
+            let mm = coach.distanceRisk != .none ? coach.observation.distanceMM : nil
+            HStack(spacing: 12) {
+                Image(systemName: review ? "exclamationmark.octagon.fill" : level.symbol).font(.title2)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(review ? "CHECK FOR CONTACT" : level.title + (mm.map { String(format: " · %.0f mm", $0) } ?? ""))
+                        .font(.headline.weight(.heavy))
+                    Text(review ? "Pause and follow your care team's instructions." : level.advice).font(.subheadline)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(level == .high ? Color.white : Color.black)
+            .background(level.color, in: RoundedRectangle(cornerRadius: 16))
+            .shadow(color: level.color.opacity(0.4), radius: 8, y: 3)
+            .onTapGesture { showLiveGuard = true }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.updatesFrequently)
         }
     }
 
-    private var detectionOverlay: some View {
-        GeometryReader { geometry in
-                ForEach(Array(coach.observation.detections.enumerated()), id: \.offset) { _, detection in
-                    let region = detection.region
-                    let color: Color = detection.role == .protectedOpening ? .orange : (detection.role == .hand ? .green : .gray)
-                    Rectangle().stroke(color, lineWidth: 2)
-                        .frame(width: region.height * geometry.size.width, height: region.width * geometry.size.height)
-                        .position(x: (1 - region.y - region.height / 2) * geometry.size.width,
-                                  y: (region.x + region.width / 2) * geometry.size.height)
-                    Text("\(detection.label) \(Int(detection.confidence * 100))%")
-                        .font(.caption2.bold()).foregroundStyle(color)
-                        .position(x: max(55, min(geometry.size.width - 55, (1 - region.y - region.height / 2) * geometry.size.width)),
-                                  y: max(10, region.x * geometry.size.height + 8))
-                }
-                if coach.sterileTipSizeMM != nil, let hand = coach.observation.closestHand,
-                   let tip = coach.observation.closestSurface, let mm = coach.observation.distanceMM {
-                    let a = CGPoint(x: (1 - hand.y) * geometry.size.width, y: hand.x * geometry.size.height)
-                    let b = CGPoint(x: (1 - tip.y) * geometry.size.width, y: tip.x * geometry.size.height)
-                    let color: Color = coach.distanceRisk == .high ? .red : coach.distanceRisk == .medium ? .orange : .cyan
-                    Path { $0.move(to: a); $0.addLine(to: b) }.stroke(color, lineWidth: 2)
-                    Text(String(format: "%.0f mm", mm)).font(.caption.bold()).foregroundStyle(color)
-                        .padding(3).background(.black.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
-                        .position(x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 - 12)
-                }
-                ForEach(Array(coach.observation.fingertips.enumerated()), id: \.offset) { _, point in
-                    Circle().fill(.cyan).frame(width: 6, height: 6)
-                        .position(x: (1 - point.y) * geometry.size.width, y: point.x * geometry.size.height)
-                }
-        }.opacity(coach.displayFresh ? 1 : 0.3).allowsHitTesting(false).accessibilityHidden(true)
-    }
+    // MARK: Settings
 
     private var settings: some View {
         NavigationStack {
             Form {
-                Section("Voice setup") {
+                Section {
+                    Button { showSettings = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showTipSize = true } } label: {
+                        HStack {
+                            Label("Sterile tip size", systemImage: "ruler")
+                            Spacer()
+                            Text(coach.sterileTipSizeMM.map { String(format: "%.1f mm", $0) } ?? "Not set").foregroundStyle(.secondary)
+                        }
+                    }
+                    Text(coach.distanceText).font(.footnote)
+                } header: { Text("Distance warnings") } footer: {
+                    Text("Medium risk within \(Int(GuardThresholds.medium)) mm (pulsing band), high risk within \(Int(GuardThresholds.high)) mm (continuous band). Experimental 2D estimate; not a contact or sterility check.")
+                }
+                Section {
+                    LabeledContent("Status", value: coach.band.status)
+                    Picker("Installed firmware", selection: binding(to: coach.band, \.protocolMode)) {
+                        Text("Original patterns").tag(BandProtocolMode.legacy)
+                        Text("Variable intensity").tag(BandProtocolMode.intensityV2)
+                    }.disabled(coach.session?.phase == .monitoring)
+                    if coach.band.connected {
+                        Button("Test vibration") { coach.band.set(intensity: 180) }
+                            .disabled(coach.session?.phase == .monitoring)
+                        Button("Disconnect", role: .destructive) { coach.band.disconnect() }
+                    } else {
+                        Button("Connect wristband") { coach.band.connect() }
+                    }
+                } header: { Text("Wristband") } footer: {
+                    Text("Choose the firmware installed on the band. Variable intensity needs the updated firmware.")
+                }
+                Section {
                     Text("Connect once before starting. During conversation, your microphone audio goes to Cartesia. Camera images stay on your phone.")
+                        .font(.footnote)
                     if coach.speech.connectionMode == .direct {
                         SecureField("Cartesia API key", text: binding(to: coach.speech, \.cartesiaAPIKey))
                             .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
@@ -246,38 +360,8 @@ struct RoutineCoachView: View {
                         else { coach.usePhoneVoice() }
                         showSettings = false
                     }
+                } header: { Text("Voice coach") } footer: {
                     Text("Phone voice can guide the checks and listen for replies. Open-ended questions need Cartesia.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                Section("Camera distance warnings") {
-                    HStack {
-                        Text("Sterile tip size")
-                        TextField("not set", value: $coach.sterileTipSizeMM, format: .number)
-                            .keyboardType(.decimalPad).multilineTextAlignment(.trailing)
-                        Text("mm").foregroundStyle(.secondary)
-                    }
-                    if coach.sterileTipSizeMM != nil {
-                        Button("Turn off distance warnings", role: .destructive) { coach.sterileTipSizeMM = nil }
-                    }
-                    Text(coach.distanceText).font(.footnote)
-                    Text("Measure the connector tip's longest side with a ruler. The app uses it as the scale: within 80 mm of the tip warns MEDIUM (pulsing band), within 30 mm warns HIGH (continuous band). Experimental 2D estimate; not a contact or sterility check.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                Section("Wristband") {
-                    Text(coach.band.status)
-                    Picker("Installed firmware", selection: binding(to: coach.band, \.protocolMode)) {
-                        Text("Original patterns").tag(BandProtocolMode.legacy)
-                        Text("Variable intensity").tag(BandProtocolMode.intensityV2)
-                    }.disabled(coach.session?.phase == .monitoring)
-                    HStack {
-                        Button("Connect") { coach.band.connect() }
-                        Spacer()
-                        Button("Disconnect") { coach.band.disconnect() }
-                    }
-                    Button("Test vibration") { coach.band.set(intensity: 180) }
-                        .disabled(!coach.band.connected || coach.session?.phase == .monitoring)
-                    Text("Choose the firmware installed on the band. Variable intensity needs the updated firmware.")
-                        .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section {
                     DisclosureGroup("Developer tools") {
@@ -299,10 +383,11 @@ struct RoutineCoachView: View {
                             .font(.footnote)
                     }
                 }
-            }.navigationTitle("Voice and wristband")
+            }.navigationTitle("Settings")
                 .toolbar { Button("Done") { showSettings = false } }
         }
     }
+
     private func debugNavigation(_ session: RoutineSession) -> some View {
         GroupBox("Routine debugging") {
             VStack(alignment: .leading, spacing: 12) {
@@ -323,6 +408,7 @@ struct RoutineCoachView: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
     }
+
     private func binding<Object: AnyObject, Value>(to object: Object,
                                                   _ keyPath: ReferenceWritableKeyPath<Object, Value>) -> Binding<Value> {
         Binding(get: { object[keyPath: keyPath] }, set: { object[keyPath: keyPath] = $0 })

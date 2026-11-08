@@ -474,6 +474,23 @@ checks += [
         try expect(tracker.update(at(0)) == .high && tracker.distanceMM == 0, "Fingertip on the tip not HIGH at 0 mm")
         try expect(tracker.update(nil) == .none && tracker.current == .none, "Lost reference kept the warning")
     }),
+    ("Safety summary counts escalations, closest approach and measured time", {
+        var stats = SafetyStats()
+        try expect(stats.safeFraction == nil && stats.closestMM == nil, "Summary invented data before measuring")
+        stats.record(level: .none, distanceMM: 120, at: 0, measuring: true)
+        stats.record(level: .none, distanceMM: 110, at: 1, measuring: true)     // 1 s safe
+        stats.record(level: .medium, distanceMM: 60, at: 1.5, measuring: true)  // MEDIUM alert
+        stats.record(level: .high, distanceMM: 20, at: 2, measuring: true)      // HIGH alert
+        stats.record(level: .high, distanceMM: 25, at: 2.5, measuring: true)    // same alert continues
+        stats.record(level: .none, distanceMM: 100, at: 3, measuring: true)
+        stats.record(level: .medium, distanceMM: 70, at: 10, measuring: true)   // after a gap: alert, no time
+        stats.record(level: .medium, distanceMM: nil, at: 10.1, measuring: false)
+        try expect(stats.mediumAlerts == 2 && stats.highAlerts == 1, "Alert count wrong: \(stats.mediumAlerts)/\(stats.highAlerts)")
+        try expect(stats.closestMM == 20, "Closest approach wrong")
+        try expect(abs(stats.measuredSeconds - 3) < 1e-9 && abs(stats.warningSeconds - 1.5) < 1e-9, "Measured time wrong")
+        try expect(abs(stats.longestSafeStreak - 1) < 1e-9, "Safe streak wrong")
+        try expect(abs((stats.safeFraction ?? 0) - 0.5) < 1e-9, "Safe fraction wrong")
+    }),
     ("Direct phone requests carry credentials only in HTTPS headers", {
         let template = try practiceTemplate()
         let request = try CartesiaRequests.agentSession(apiKey: "test-key", voiceID: "test-voice", agentID: "agent_test",

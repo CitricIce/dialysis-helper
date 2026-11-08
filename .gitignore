@@ -7,3 +7,7 @@ build/
 .swiftpm/
 xcuserdata/
 *.xcuserstate
+
+.env
+.env.*
+!.env.example

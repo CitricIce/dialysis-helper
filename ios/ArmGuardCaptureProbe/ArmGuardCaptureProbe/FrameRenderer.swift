@@ -29,7 +29,7 @@ final class FrameRenderer {
         result.colorImage = portraitImage(CIImage(cvPixelBuffer: color), maximumDimension: 960)
         if let depth = frame.sceneDepth {
             do {
-                let grid = try copyGrid(depth)
+                let grid = try Self.copyGrid(depth)
                 result.depthResolution = "\(grid.width) × \(grid.height)"
                 result.hasConfidence = grid.confidence != nil
                 result.summary = DepthAnalyzer.summarize(grid)
@@ -59,7 +59,7 @@ final class FrameRenderer {
         return context.createCGImage(image, from: image.extent)
     }
 
-    private func copyGrid(_ depth: ARDepthData) throws -> DepthGrid {
+    static func copyGrid(_ depth: ARDepthData) throws -> DepthGrid {
         let map = depth.depthMap
         guard CVPixelBufferGetPixelFormatType(map) == kCVPixelFormatType_DepthFloat32 else {
             throw ReadError.unexpectedPixelFormat

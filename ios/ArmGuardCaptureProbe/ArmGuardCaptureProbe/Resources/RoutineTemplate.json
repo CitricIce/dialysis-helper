@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "id": "manual-exchange-practice-v1",
+  "title": "Manual exchange practice",
+  "practiceOnly": true,
+  "protocolNote": "Practice template, not a treatment protocol. Exchange count, timing, fluid, strength, volume, hygiene method and connector sequence must come from the PD team. No prescription is configured.",
+  "slots": ["Exchange 1", "Exchange 2", "Exchange 3", "Exchange 4"],
+  "checks": [
+    {
+      "id": "room", "title": "Prepare the space", "responseKind": "actionReport",
+      "prompt": "Let's prepare the space. Use your clinic's room setup instructions. Tell me one thing you changed to reduce distraction or direct airflow at the work area.",
+      "help": "Take one action at a time. For this practice, describe the work area or airflow you checked. The camera cannot verify the room, fan or air conditioner from this view."
+    },
+    {
+      "id": "supplies", "title": "Read the supplies label", "responseKind": "readBack",
+      "prompt": "Before handling exposed parts, inspect the practice bag and packaging. Read back the product, strength, volume and expiry. Compare these with the clinic's instructions, then confirm. I cannot choose a fluid or verify a prescription.",
+      "help": "You can scan the label for a text suggestion, then inspect and read it yourself. Include packaging condition and fluid appearance in your check. Do not infer strength from bag color. This practice has no prescribed fluid values."
+    },
+    {
+      "id": "mask", "title": "Check the mask step", "responseKind": "actionReport",
+      "prompt": "Follow the mask step in your clinic's instructions. Tell me what you checked before preparing your hands.",
+      "help": "This overhead view cannot verify a mask. Use the mask instructions taught by your PD team; don't move the phone after hand preparation just to show your face."
+    },
+    {
+      "id": "hands", "title": "Prepare your hands", "responseKind": "actionReport",
+      "prompt": "Follow the hand hygiene and drying method taught by your clinic. Tell me what you completed before touching the prepared supplies.",
+      "help": "The correct sequence, cleaning product and sanitizer timing belong to your clinic's protocol. Hand tracking does not verify cleanliness or drying. If you touch an unplanned surface, pause and use your taught hygiene instructions."
+    },
+    {
+      "id": "teachback", "title": "Keep the protected parts in mind", "responseKind": "readBack",
+      "prompt": "Before the practice connection, tell me which surfaces you will keep away from your fingers, clothing and work surface. This helps us check that the instruction was clear.",
+      "help": "Point out the exposed protected opening on the practice prop. A spoken explanation is recorded as your read-back, not proof that a surface is sterile. Say help whenever the distinction is unclear."
+    },
+    {
+      "id": "connect", "title": "Practice connection monitoring", "responseKind": "monitoring",
+      "prompt": "Keep the practice props and both hands in view. Monitoring needs a trained protected-part detector and usable depth. Say start monitoring when the checks show ready, or finish preparation practice if the detector is not installed.",
+      "help": "The band can warn about experimental proximity. It cannot confirm sterility or physical contact. If an observation is lost, monitoring pauses and needs a fresh rearm. Follow your clinic's connector procedure, not a guessed app sequence."
+    },
+    {
+      "id": "therapy", "title": "Follow the prescribed exchange steps", "responseKind": "actionReport",
+      "prompt": "For this practice, describe how you will follow the next exchange steps from your own training. This app does not set drainage, flush, fill or dwell instructions.",
+      "help": "Use your clinic and equipment instructions for the exchange sequence and any measurements. This practice template does not infer valve position, flow, fill volume or treatment completion."
+    },
+    {
+      "id": "disconnect-preparation", "title": "Prepare for disconnection", "responseKind": "actionReport",
+      "prompt": "Before practice disconnection, recheck the supplies and hand preparation required by your clinic. Tell me what you prepared.",
+      "help": "Connection and disconnection are separate observation windows. Prepare the new protected cap surface according to your training; do not assume the first preparation check still covers a later step."
+    },
+    {
+      "id": "disconnect", "title": "Practice disconnection monitoring", "responseKind": "monitoring",
+      "prompt": "Keep the exposed practice opening and new cap interior in view. Say start monitoring when the detector and depth are ready.",
+      "help": "Only deliberately exposed practice surfaces should be active. Cover or remove unused mock parts. A real mating-pair exception and clinic procedure need validation before real-exchange coaching."
+    },
+    {
+      "id": "review", "title": "Review the practice", "responseKind": "readBack",
+      "prompt": "Tell me any uncertainty, interruption or unplanned touch you noticed. If none, describe the checks you completed. Then confirm to finish the practice record.",
+      "help": "There is no cleanliness score. Counts include self-reports and experimental observations. For concerns during a real exchange, use your PD team's instructions and contact route."
+    }
+  ]
+}

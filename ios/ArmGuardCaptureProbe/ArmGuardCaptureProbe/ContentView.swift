@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-struct ContentView: View {
+struct CaptureProbeView: View {
     @StateObject private var capture = CaptureController()
     @Environment(\.scenePhase) private var scenePhase
 

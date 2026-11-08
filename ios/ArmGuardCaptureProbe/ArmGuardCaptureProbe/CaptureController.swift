@@ -25,6 +25,8 @@ final class CaptureController: NSObject, ObservableObject, ARSessionDelegate {
     private let delegateQueue = DispatchQueue(label: "org.armguard.probe.frames", qos: .userInitiated)
     private let renderQueue = DispatchQueue(label: "org.armguard.probe.preview", qos: .userInitiated)
     private let renderer = FrameRenderer()
+    // Configure before starting capture; the observer must enqueue work and return immediately.
+    var frameObserver: ((ARFrame) -> Void)?
     private let stateLock = NSLock()
     private var pipeline = PipelineState()
     private var healthTimer: Timer?
@@ -169,6 +171,8 @@ final class CaptureController: NSObject, ObservableObject, ARSessionDelegate {
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        guard withState({ $0.runID }) != nil else { return }
+        frameObserver?(frame)
         let receipt = ProcessInfo.processInfo.systemUptime
         let token: UUID? = withState { state in
             guard let runID = state.runID else { return nil }
@@ -237,7 +241,7 @@ final class CaptureController: NSObject, ObservableObject, ARSessionDelegate {
         let summary = snapshot.summary
         let center = previewFresh && depthFresh ? summary?.centerMeters.map { String(format: "%.3f m", $0) } : nil
         return """
-        ArmGuard Capture Probe 0.1 (build 1)
+        ArmGuard Capture Probe 0.2 (build 2)
         Exported: \(ISO8601DateFormatter().string(from: Date()))
         Device: \(UIDevice.current.model), \(UIDevice.current.systemName) \(UIDevice.current.systemVersion)
         Rear scene-depth supported: \(supportsLiDAR)

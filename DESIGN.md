@@ -1,10 +1,12 @@
 # ArmGuard PD: software and feedback design
 
-Status: implementation plan, reconciled November 7, 2026. The original ESP32
-firmware and a [native camera/LiDAR probe](ios/ArmGuardCaptureProbe/README.md)
-exist in this repository. The probe has source/project files; iOS compilation and
-physical-device verification require full Xcode, which is not currently available.
-The full coaching application and earlier Mac application remain unimplemented.
+Status: prototype source updated November 7, 2026. The
+[native iPhone app](ios/ArmGuardCaptureProbe/README.md) now has practice routines,
+hand tracking, OCR, a Core ML detector adapter, BLE and voice integrations.
+Monitoring requires a trained protected-part model, which is not included.
+The firmware has legacy and PWM-v2 interfaces. Portable logic and mocked gateway
+checks run here; full Xcode, iOS compilation, live Cartesia and hardware validation
+remain outstanding. The earlier Mac application remains unimplemented.
 
 The updated [ArmGuard PD product design](<ArmGuard PD Real-Time Sterile Technique Coaching for Home Peritoneal Dialysis.md>)
 sets the product direction. The current preferred implementation runs capture,
@@ -12,6 +14,147 @@ tracking, risk, BLE and audio on the iPhone. The native plan below supersedes th
 earlier Mac-primary execution/stack sections, which are retained as alternatives.
 Prop geometry, exposure rules and bench-validation requirements apply to either
 implementation. [README.md](README.md) documents existing firmware and wiring.
+
+## Current iteration: routines and dynamic voice
+
+This section supersedes the marker-first and prerecorded-only choices in the
+earlier native-stack table below. The user now prefers Roboflow/YOLOv8 protected
+surface detection, optionally custom hand/fingertip labels, with Apple hand tracking
+as fallback. The existing ARKit capture path remains in use. ArUco is an alternative
+for a constrained prop demo, not a required dependency of this iteration.
+
+| Component | Implemented direction | Limits / configuration |
+| --- | --- | --- |
+| Routine engine | Versioned JSON checks, practice slots, self-reports, selective read-back + confirmation, pause/rearm/review states | Four slot names are examples, not a prescribed daily schedule; no fluid prescription or clinic protocol configured |
+| Capture | Rear RGB + sceneDepth from the same ARFrame; portrait only | iPhone 15 Pro target; depth at small edges still needs validation |
+| Hands | Custom fingertip boxes when present; Apple Vision adds missing candidates and supplies fallback | Whole-hand centroids cannot substitute for nearest fingers. Two hands with all five confident Apple tips each are a conservative arming/clearance gate |
+| Protected objects | Optional `SterileParts.mlmodelc` via Vision/Core ML | Exact exposed-surface labels, NMS object outputs; no trained model supplied and no fabricated detections |
+| Proximity | Fingertip-to-nearest-projected-region boundary, then depth unprojection | Experimental point-to-box-boundary estimate, not a true 3D surface minimum or physical-contact measurement |
+| Wristband | CoreBluetooth; legacy patterns or PWM-v2 duty | Matching firmware required. One connected band, no left/right routing yet |
+| Immediate warnings | Local AVSpeechSynthesizer, BLE and display | No cloud round trip in hazard path; voice repetition limited to once per five seconds |
+| Routine speech | Local speech by default; optional gateway Cartesia TTS | Generated per prompt; not fixed clips. Eight-second network timeout then local fallback |
+| Questions | Opt-in streaming Cartesia Managed Agent through server-created session | Needs configured agent/voice/API access; generated explanations are not clinically verified. No app-state tools; remote transcripts never enter the routine engine |
+| Other visual support | One-shot Apple text recognition for visible bag labels | Suggestions only; no automatic prescription match, color-based strength inference or automatic check completion |
+| Events | Local timestamp/type/evidence JSON; export by user | No audio, images, free-text read-backs or automatic nurse upload. No cleanliness score |
+
+### Checks that encourage attention
+
+Use one short action at a time, ask for a concrete action report, and use read-back
+at consequential decision points such as supply selection and protected surfaces.
+Offer Explain, Repeat, Pause and questions without shaming the user. Phrase
+teach-back as checking the explanation, rather than testing the patient. This is
+consistent with [AHRQ teach-back guidance](https://www.ahrq.gov/health-literacy/improve/precautions/tool5.html).
+A specific PD voice-agent flow has not been established as the single most
+psychologically effective design, and no interaction can force attention or prove
+an action was performed. The current response-length/uncertainty rules are simple
+interaction gates, not semantic or clinical verification.
+
+Avoid a string of yes/no prompts, mandatory long quizzes, arbitrary repeated
+confirmations and rewards for speed. The practice engine rejects bare yes/done,
+common uncertainty phrases and common question forms. Questions use their own
+mode and leave the current check open. Supply/protected-surface read-backs require
+an additional exact confirmation; they are still self-reported. Test this design
+against yes/no prompts on props: measure omissions, recall after interruptions,
+false completion, response time, requests for help, warning frequency and perceived
+burden. Include PD nurses and intended users before choosing the final flow.
+
+The bundled order is room → supplies → mask → hands → protected-surface read-back
+→ practice connection monitoring → clinic-directed exchange steps → disconnection
+preparation → practice disconnection monitoring → review. It is a UI scaffold,
+not an approved technique sequence. Handwashing/drying/sanitizer timing, mask use,
+exit-site care, treatment timing and fluid selection must come from the actual
+clinic/equipment instructions. Do not turn examples such as “skip sanitizer after
+washing” or “bar soap is wrong” into universal rules. For example, one
+[NHS manual-exchange guide](https://www.hey.nhs.uk/patient-leaflet/peritoneal-dialysis-information-booklet/)
+includes later hand disinfection and permits positioning the drain bag on the
+floor. Protect exposed openings; a floor rule for every bag or tube would be wrong.
+The phone view also cannot verify that the room's fan/AC is off, hands are clean,
+or a mask is worn. No such visual check is claimed.
+
+### Other checks and useful haptics
+
+Label OCR and fingertip-coverage checks work without training a new model. A future
+barcode/QR-to-product catalog could aid identification, but needs the actual
+manufacturer codes and a prescribed order to compare against. Mask detection,
+fan state and hand cleanliness must not be inferred from an overhead hand view.
+A future camera-quality check could prompt repositioning for blur or glare, with
+its own validation rather than claiming it verifies technique.
+
+Use the band for a deliberate connectivity/perception test before preparation,
+proximity intensity and an experimentally distinct loss-of-monitoring cue after
+usability testing. The current build implements the test pulse, proximity and
+local spoken loss cue; no separate loss haptic is implemented. Wrist vibration
+alone cannot measure handwashing, rubbing coverage or cleanliness. An IMU-based
+hand-motion check would require additional sensing/validation and would still be
+a timing/motion observation, not a cleanliness test. Avoid buzzing for every
+routine acknowledgment until users can distinguish cues and tolerate the burden.
+
+### Props, labels and model handoff
+
+Use dry, disconnected practice connectors/caps, a mock bag with legible product,
+strength, volume and expiry, a matte work surface, a rigid overhead mount and a
+ruler. Do not use a patient-connected set. Print markers only if choosing the
+separate marker-based geometry approach; this Core ML path does not need them.
+Start with generously visible mock protected openings for a bench demonstration,
+then measure performance on actual-size props before claiming it generalizes.
+
+Annotate the **exposed opening/interior**, not the whole cap or connector body:
+`sterile_tip`, `cap_interior`, `connector_opening`. Optional labels are `fingertip`,
+`thumb_tip`, `index_tip`, `middle_tip`, `ring_tip`, `little_tip`. If annotating whole
+hands too, those boxes may support coarse alerts later, but their centroids are
+ignored for fine proximity. Custom fingertip candidates are merged with confident
+Apple tips so a single custom detection cannot hide missing fingers. Unknown
+protected objects have no Apple fallback: lack of detections is unavailable.
+
+Train/export the chosen YOLOv8 variant in your Roboflow/Ultralytics workflow, check
+Core ML export availability for that model/account, and export with NMS so Vision
+returns `VNRecognizedObjectObservation`. Add the model to the Xcode app target and
+name it `SterileParts` (Xcode compiles it to `.mlmodelc`). See the
+[official Core ML export guide](https://docs.ultralytics.com/integrations/coreml/).
+Validate the exact export, input preprocessing, class names, orientation and boxes
+on device. Training and conversion are not implemented by the adapter. Split
+validation by recording/session and include occlusion, sleeves, skin tones,
+lighting, clutter, rotation, capped vs exposed parts and negative examples.
+Measure protected-surface recall and fingertip localization, not only mAP.
+
+### Experimental timing and failure behavior
+
+Capture requests 30 fps where available. Vision accepts at most 15 fresh frames
+per second, one inference in flight including main-queue delivery; busy frames are
+dropped. Preview rendering has its own worker at at most 10 Hz. A result older
+than 250 ms by ARFrame capture timestamp is unusable. A 100 ms timer also checks
+stalls while armed. Model loading, OCR, audio, disk and network never wait in the
+camera delegate; OCR is requested only while checks are open. Avoid scanning during
+critical movements because it still shares the vision worker.
+
+The initial warning band is 50 mm and mixed-depth rejection threshold is 20 mm;
+these are configurable-in-code experimental defaults, not measured precision.
+Reject invalid/low-confidence or mixed-edge patches and protected regions under
+two depth pixels wide/high. These filters cannot eliminate all depth leakage.
+Warn immediately on a usable near pair, increase duty as estimated distance
+shrinks, and require 300 ms of observed separation before releasing a warning.
+Missing coverage/depth or stale frames pause monitoring and send off. A projected
+overlap becomes a sticky review state; it is not a zero-gap measurement. No
+velocity prediction, contamination classification or validated mating-pair
+exception exists yet. Other body parts, clothing, tip-to-table/floor and untracked
+object collisions remain uncovered. The app must not be presented as protecting
+against all of them.
+
+Measured pipeline duration is displayed, but it excludes some sensor delivery,
+BLE scheduling and motor mechanics. Before setting a latency claim, bench-measure
+capture-to-decision age distributions and physical motor/audio onset under motion,
+loss/recovery and sustained thermal load. The prior under-150-ms goal is a target,
+not a result. PWM-v2 host commands expire after 250 ms; firmware receives a 100 ms
+heartbeat and shuts off after 300 ms without one. Lost observation is a distinct
+pause message; silence never proves clearance.
+
+Dynamic Q&A uses streaming audio and can be interrupted. The current UI permits
+starting it only in checking/paused phases, so conversation cannot distract from
+an actively monitored connection. It cannot advance checks or clear review flags.
+Cloud speech may fail; offline Explain and local warning speech remain available.
+See [gateway setup](services/voice_gateway/README.md). No real API calls or model
+inferences have been verified here, and prompts alone cannot guarantee safe LLM
+answers. Clinical content and agent behavior require review before patient use.
 
 ## Scope and reconciliation
 
@@ -37,7 +180,7 @@ reconciliation; see the native implementation decision immediately below it.
 | Geometry | Clicked image regions | Marker offset and averaged pixels/cm | Calibrated planar geometry for constrained demo; calibrated marker pose for tilted props, with hand-depth limits |
 | Model | MediaPipe, unspecified API | Legacy Hands with model complexity 0 | MediaPipe Tasks Hand Landmarker; legacy options are not Tasks options |
 | Band | Wristband, fixed patterns | Upper-arm band, variable intensity | Neutral band interface; mounting is a hardware/usability decision |
-| BLE | DialysisBand, ASCII commands | ArmGuard-L/R, binary commands | Adafruit motor supports PWM intensity; add intensity reception/PWM to the existing fixed-pattern firmware |
+| BLE | DialysisBand, ASCII commands | ArmGuard-L/R, binary commands | Adafruit motor supports PWM; updated sketch adds intensity-v2 alongside legacy patterns |
 | Timing | No budget | Under 150 ms, contact debounce | Warn immediately on usable risk; event confirmation must not delay warning |
 | Tracking loss | Unspecified | No buzz after 300 ms | Protection unavailable, distinct pause prompt, expire commands; missing detection is not clearance |
 | Dashboard | Future | Scores, clips, patient ranking | After the live loop works; keep outside the decision path |
@@ -73,19 +216,19 @@ Mac: build/install/debug; optional later event export or dashboard
 This removes RGB/depth encoding, transport and host decoding from the live loop.
 It does not establish a latency result: measure phone inference, depth validity,
 BLE, motor onset and sustained thermal performance on the actual device. No
-Record3D purchase, server, Apple-hosted inference or live Mac receiver is required
-for this architecture.
+Record3D purchase, Apple-hosted inference or live Mac receiver is required for the
+local vision/alert path. Optional dynamic voice uses the gateway described above.
 
 | Layer | Native choice | Design consequence |
 | --- | --- | --- |
 | App/UI | Swift + SwiftUI, native camera preview/overlay | One foreground screen with readiness, arm/stop, calibration and manual phase controls |
-| RGB/depth | AVFoundation video/depth outputs and AVCaptureDataOutputSynchronizer | Process paired frames with timestamps and calibration; begin from Apple's capture sample |
+| Earlier RGB/depth option | AVFoundation video/depth outputs and AVCaptureDataOutputSynchronizer | Process paired frames with timestamps and calibration; begin from Apple's capture sample |
 | Hand model | Vision VNDetectHumanHandPoseRequest, maximumHandCount=2 | Built-in hand-pose detection; no custom training or Python runtime; validate this detector rather than assuming MediaPipe results transfer |
-| Prop markers | Keep ArUco via OpenCV iOS and a thin Objective-C++ bridge | Preserve existing marker IDs and measured prop profiles; native integration is work but requires no model training |
+| Alternative prop markers | ArUco via OpenCV iOS and a thin Objective-C++ bridge | Preserve existing marker IDs and measured prop profiles; native integration is work but requires no model training |
 | Marker simplification, optional | Native Vision QR detection on rigid flags | Alternative if avoiding OpenCV is important; requires different printed tags and validated corner/pose handling, not an ArUco-compatible drop-in |
 | Coordinates/risk | Swift geometry with calibrated depth and marker transforms | Same boundary-clearance, exposure, uncertainty, loss and review semantics as this document |
 | Band | CoreBluetooth central directly to ESP32 characteristic | Preserve explicit legacy versus intensity-v2 modes, freshness, heartbeat and watchdog contract |
-| Audio | AVAudioPlayer preloaded clips; AVSpeechSynthesizer development fallback | Priority/cooldown worker; speech must not block vision |
+| Earlier audio option | AVAudioPlayer preloaded clips; AVSpeechSynthesizer fallback | Priority/cooldown worker; speech must not block vision |
 | Log | Small local Codable event records on a background writer | Export summaries later; no dashboard/network dependency for alerts |
 
 Apple documents [hand-pose detection](https://developer.apple.com/documentation/vision/vndetecthumanhandposerequest),
@@ -569,39 +712,30 @@ characteristic: 7a1e0002-3c5d-4b8a-9f21-6d2c8e4b1a00
 payload:        ASCII O / W / E / T / S
 ```
 
-The Adafruit vibration motor supports variable intensity when driven with PWM
-through the motor driver/transistor. No replacement motor is required for that
-feature. The limitation is in the current sketch: it reads the first byte and
-uses digitalWrite HIGH/LOW for fixed patterns, with no intensity command, PWM
-control or receive-time watchdog. Finite patterns end by themselves. Binary
-intensity messages will not work with that sketch; repeatedly sending W restarts
-the pattern. Updating the sketch to receive intensity and set PWM enables the
-intended hardware behavior.
+The Adafruit motor supports variable intensity through the existing driver or
+transistor. The updated sketch retains the ASCII characteristic above and adds
+`7a1e0003-3c5d-4b8a-9f21-6d2c8e4b1a00` for two-byte `[mode, duty]` writes.
+Mode 0 is off, 1 is experimental proximity, and 2 is a review cue. Nonzero modes
+apply the supplied 0–255 PWM duty; mode 2 does not implement the original proposed
+double pulse. The app exposes explicit legacy/v2 selection and defaults to legacy
+for boards with the older sketch. There is no mode 3 in the implemented protocol;
+the app's test pulse uses mode 1 with a short expiry.
 
-Provide explicit adapters:
+The phone sends v2 changes and a 100 ms heartbeat, expires desired intensity after
+250 ms, and reconnects with off. The updated sketch turns PWM off after 300 ms
+without a valid v2 packet and on disconnect. Invalid modes/packet sizes do not
+refresh the watchdog. Existing ASCII/USB patterns remain finite, and repeated W
+is avoided by the legacy app adapter. Compilation, useful duty range, heartbeat
+behavior and physical shutoff still require the actual board/toolchain. See
+[firmware setup and tests](README.md#optional-variable-intensity-protocol).
 
-- **Mock:** display computed intensity/reason and record commands.
-- **Legacy:** W/E on state transitions and S on clear/expiry; label this fixed
-  pattern behavior, not variable-intensity output.
-- **Intensity v2 (firmware work required):** separately identified characteristic
-  / explicit protocol selection. Proposed two-byte payload `[mode, intensity]`:
-  OFF=0, WARN=1, SUSPECTED_CONTACT=2, TEST=3. WARN sets PWM; contact requests the
-  product document's double pulse.
-
-For v2, send changes plus a **100 ms heartbeat even when unchanged**, with a
-proposed 300 ms receive-time watchdog. This resolves the product doc's conflict
-between change-only writes and watchdog expiry. Duplicate contact heartbeats must
-refresh liveness without restarting the pattern. The double pulse lasts 400 ms,
-so heartbeats must continue through it. WARN must not preempt an active contact
-pattern; OFF/watchdog expiry must stop it immediately. Do not carry a contact
-command past its freshness deadline. These semantics need firmware bench tests.
-
-Discover by device/service rather than an assumed MAC address. Explicitly use
-`write_gatt_char(..., response=False)` only with a supporting characteristic.
-Bleak documents macOS device identifiers and GATT writes in its
-[client API](https://bleak.readthedocs.io/en/latest/api/client.html).
-Show reconnect state, discard expired writes and send OFF before rearming.
-Serial is useful for current command debugging; it also lacks intensity support.
+The current native implementation uses CoreBluetooth discovery by service and
+writes without response only to a supporting characteristic. It keeps only the
+current unexpired command and requires an explicit reconnect after loss. One
+band is connected; left/right routing and an in-app mock band are future work.
+For the earlier Mac alternative, Bleak's
+[client API](https://bleak.readthedocs.io/en/latest/api/client.html) explains
+macOS device identifiers and GATT writes. USB is for legacy command debugging.
 
 Audio follows the hazard reason, not the intensity number. Use the first-demo
 phrases above and “Pause. Possible contact. Follow the configured training
@@ -610,7 +744,7 @@ ones; coalesce duplicates and apply cooldowns so speech never queues behind the
 action. Any instructions about replacing supplies or continuing a real exchange
 must come from the clinic's approved protocol, not a generic inferred response.
 
-## Planned files and build order
+## Earlier Mac alternative: planned files and build order
 
 ```text
 main.py                   # lifecycle, readiness, keyboard/UI
@@ -630,7 +764,7 @@ audio/prompts.py          # preloaded priority playback
 store/db.py               # background writer
 overlay.py                # geometry, evidence, age and timings
 dashboard/app.py          # later, separate process
-firmware/wristband/wristband.ino  # existing firmware, unchanged by this plan
+firmware/wristband/wristband.ino  # shared firmware; legacy and PWM-v2 now implemented as source
 tests/                    # geometry/state/replay verification
 ```
 

@@ -8,9 +8,12 @@ Nov 7, 2026 · @e
 > pipeline below is an earlier option. It also covers props, collision rules,
 > installation and latency. Monocular overlap is
 > suspected contact rather than confirmed touch, and marker pose does not supply
-> hand depth. The Adafruit motor supports PWM intensity; the current sketch needs
-> intensity reception/PWM added to implement the binary protocol below. Read the
-> implementation decisions alongside this original product proposal.
+> hand depth. The Adafruit motor supports PWM intensity; the updated sketch now
+> adds a separate intensity-v2 characteristic while retaining legacy patterns.
+> The latest source also includes practice routines, Apple hands, a Core ML adapter,
+> BLE and optional dynamic Cartesia voice. No trained protected-part model or
+> clinical protocol is supplied. Read the current routine/voice section of DESIGN
+> alongside this original product proposal; its claims are not implementation results.
 
 ## Summary
 

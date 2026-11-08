@@ -2,7 +2,7 @@
 
 Read this file before changing code, architecture, models, hardware interfaces,
 or project documentation in this repository.
-
+lol
 ## Mandatory: update all design docs after a major change
 
 After **any significant update**, review and update **all** of the design,

@@ -127,9 +127,9 @@ public enum ProximityFeedback {
         return risk
     }
     public static func combinedLevel(phase: RoutinePhase?, fresh: Bool, decision: ProximityDecision,
-                                     distanceMM: Double?, scaleRisk: RiskLevel) -> RiskLevel {
+                                     distanceMM: Double?, scaleRisk: RiskLevel, distanceFresh: Bool? = nil) -> RiskLevel {
         max(level(phase: phase, fresh: fresh, decision: decision),
-            distanceLevel(fresh: fresh, distanceMM: distanceMM, risk: scaleRisk))
+            distanceLevel(fresh: distanceFresh ?? fresh, distanceMM: distanceMM, risk: scaleRisk))
     }
     public static func level(phase: RoutinePhase?, fresh: Bool, decision: ProximityDecision) -> RiskLevel {
         guard phase == .monitoring, fresh else { return .none }
@@ -218,19 +218,32 @@ public enum ScaleProximity {
     }
 }
 
-/// Warning distances, fingertip to the tip's nearest edge. Defaults: HIGH within 10 mm,
-/// MEDIUM within 30 mm. Editable in the app's Connectors sheet, saved on the phone and
+/// Warning distances, fingertip to the tip's nearest edge. Defaults: HIGH within 15 mm,
+/// MEDIUM within 40 mm. Editable in the app's Connectors sheet, saved on the phone and
 /// applied to the tracker on every frame. HIGH always stays at least `minimumGapMM`
 /// inside MEDIUM, so the two zones never overlap.
 public enum WarningDistances {
-    public static let defaultHighMM = 10.0
-    public static let defaultMediumMM = 30.0
+    public static let defaultHighMM = 15.0
+    public static let defaultMediumMM = 40.0
     public static let stepMM = 5.0
     public static let minimumGapMM = 5.0
     public static let lowestMM = 5.0
     public static let highestMM = 150.0
     public static let highKey = "warningDistanceMM.high"
     public static let mediumKey = "warningDistanceMM.medium"
+
+    /// Upgrade only the previous default pair, preserving genuinely custom warning zones.
+    public static func migrateDefaults(in defaults: UserDefaults = .standard) {
+        let versionKey = "warningDistanceMM.defaultsVersion"
+        guard defaults.integer(forKey: versionKey) < 1 else { return }
+        let previousHigh = (defaults.object(forKey: highKey) as? NSNumber)?.doubleValue ?? 10
+        let previousMedium = (defaults.object(forKey: mediumKey) as? NSNumber)?.doubleValue ?? 30
+        if previousHigh == 10 && previousMedium == 30 {
+            defaults.set(defaultHighMM, forKey: highKey)
+            defaults.set(defaultMediumMM, forKey: mediumKey)
+        }
+        defaults.set(1, forKey: versionKey)
+    }
 
     private static func clamp(_ value: Double, _ low: Double, _ high: Double) -> Double { min(max(value, low), high) }
     private static func stored(_ key: String) -> Double? {
@@ -272,13 +285,22 @@ public struct WarningCuePolicy {
     private var levelSince = 0.0
     private var spoken: RiskLevel = .none
     private var lastSpoken = -Double.infinity
+    private var lastAvailableAt: Double?
+    private var sawUnavailable = false
 
     public init() {}
 
-    public mutating func reset() { level = .none; levelSince = 0; spoken = .none; lastSpoken = -.infinity }
+    public mutating func reset() {
+        level = .none; levelSince = 0; spoken = .none; lastSpoken = -.infinity; lastAvailableAt = nil; sawUnavailable = false
+    }
 
     /// Feed the current level (any rate). Returns the level to announce now, or nil to stay quiet.
-    public mutating func update(_ newLevel: RiskLevel, at now: Double) -> RiskLevel? {
+    public mutating func update(_ newLevel: RiskLevel, at now: Double, observationAvailable: Bool = true) -> RiskLevel? {
+        // Unknown is not clear. Brief inference gaps must not restart the pending warning
+        // on every frame, but must NEVER emit or repeat a cue from a stale estimate.
+        guard observationAvailable else { sawUnavailable = true; return nil }
+        if sawUnavailable, let previous = lastAvailableAt, now - previous > clearResetSeconds { reset() }
+        sawUnavailable = false; lastAvailableAt = now
         if newLevel != level { level = newLevel; levelSince = now }
         let held = now - levelSince
         if level == .none {
@@ -309,27 +331,39 @@ public struct ScaleRiskTracker {
     public private(set) var mmPerPixel: Double?
     public private(set) var distanceMM: Double?
     public private(set) var current: RiskLevel = .none
+    public private(set) var measurementTimestamp: Double?
+    public let dropoutHoldSeconds = 0.2
 
     public init() {}
 
-    public mutating func reset() { mmPerPixel = nil; distanceMM = nil; current = .none }
+    public mutating func reset() { mmPerPixel = nil; distanceMM = nil; current = .none; measurementTimestamp = nil }
 
     private static func ema(_ previous: Double?, _ new: Double, _ alpha: Double) -> Double {
         guard let previous else { return new }
         return alpha * new + (1 - alpha) * previous
     }
 
-    public mutating func update(_ measurement: ScaleProximityMeasurement?) -> RiskLevel {
-        guard let size = sterileTipSizeMM, size.isFinite, size > 0,
-              let measurement, measurement.referencePixels.isFinite, measurement.referencePixels > 0,
-              measurement.distancePixels.isFinite, measurement.distancePixels >= 0 else {
+    public mutating func update(_ measurement: ScaleProximityMeasurement?, at sourceTime: Double? = nil) -> RiskLevel {
+        guard let size = sterileTipSizeMM, size.isFinite, size > 0 else { reset(); return .none }
+        if let sourceTime, !sourceTime.isFinite || (measurementTimestamp.map { sourceTime < $0 } ?? false) {
             reset(); return .none
         }
-        let scale = Self.ema(mmPerPixel, size / measurement.referencePixels, scaleSmoothAlpha)
+        guard let measurement else {
+            // Keep only a recent existing hazard, never a fabricated position or a "clear" reading.
+            // Keep its original source timestamp so inference/UI latency still counts toward expiry.
+            if let sourceTime, let previous = measurementTimestamp,
+               current != .none, sourceTime >= previous, sourceTime - previous <= dropoutHoldSeconds { return current }
+            reset(); return .none
+        }
+        guard measurement.referencePixels.isFinite, measurement.referencePixels > 0,
+              measurement.distancePixels.isFinite, measurement.distancePixels >= 0 else { reset(); return .none }
+        measurementTimestamp = sourceTime
+        let instantaneousScale = size / measurement.referencePixels
+        // Smooth increases in estimated clearance. A smaller scale or closer hand takes effect now.
+        let scale = min(instantaneousScale, Self.ema(mmPerPixel, instantaneousScale, scaleSmoothAlpha))
         mmPerPixel = scale
         let raw = measurement.distancePixels * scale
-        // Overlap reports immediately; smoothing must not delay the most serious case.
-        let distance = raw == 0 ? 0 : Self.ema(distanceMM, raw, distanceSmoothAlpha)
+        let distance = distanceMM.map { raw < $0 ? raw : Self.ema($0, raw, distanceSmoothAlpha) } ?? raw
         distanceMM = distance
         // Escalate immediately; de-escalate only past threshold + margin.
         var next = level(for: distance)

@@ -108,14 +108,14 @@ struct RoutineCoachView: View {
         card {
             Label("Make room for a hands-free practice", systemImage: "waveform")
                 .font(.headline)
-            Text("Set your phone down with the rear camera facing your workspace. Sterling guides you by voice, with camera support and wristband feedback.")
+            Text("Set your phone down with the rear camera facing your workspace. Sterling guides you by voice, with camera support. An optional wristband adds vibration.")
                 .font(.subheadline).foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 Label(coach.voiceConfigured ? "Voice set up" : "Phone voice", systemImage: "waveform")
                 Spacer()
-                Label(coach.band.connected ? "Band connected" : "Band not connected", systemImage: "applewatch.radiowaves.left.and.right")
+                Label(coach.band.connected ? "Band connected" : "Band optional", systemImage: "applewatch.radiowaves.left.and.right")
             }.font(.caption).foregroundStyle(.secondary)
-            Button(coach.voiceConfigured ? "Voice and wristband settings" : "Set up your voice and wristband") { showSettings = true }
+            Button(coach.voiceConfigured ? "Voice settings" : "Set up your voice") { showSettings = true }
                 .font(.subheadline.weight(.semibold))
         }
         if !planner.reminderMessage.isEmpty {
@@ -244,6 +244,10 @@ struct RoutineCoachView: View {
                 .tint(.teal).accessibilityLabel("Practice progress")
             Text(session.currentCheck?.title ?? "Finished").font(.largeTitle.bold())
         }
+        if coach.demoMode {
+            Label("Demo mode · timed voice and wristband cues", systemImage: "play.rectangle")
+                .font(.subheadline.weight(.semibold)).foregroundStyle(.orange)
+        }
         voiceCard
         if session.reviewRequired {
             Label("Possible contact needs review", systemImage: "exclamationmark.octagon.fill")
@@ -321,7 +325,7 @@ struct RoutineCoachView: View {
                     .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
             }
             Label(coach.cameraMessage, systemImage: "camera.viewfinder").font(.footnote).foregroundStyle(.secondary)
-            Label(coach.band.connected ? "Wristband connected" : "Wristband not connected", systemImage: "applewatch.radiowaves.left.and.right")
+            Label(coach.band.connected ? "Wristband connected" : "Audio works without a wristband", systemImage: "applewatch.radiowaves.left.and.right")
                 .font(.footnote).foregroundStyle(.secondary)
             if !coach.capture.isRunning {
                 Button("Start camera") { coach.startCamera() }.disabled(coach.capture.isStarting)
@@ -386,14 +390,15 @@ struct RoutineCoachView: View {
     // MARK: Warning banner
 
     @ViewBuilder private var riskBanner: some View {
-        if coach.session?.reviewRequired == true || coach.riskLevel != .none {
+        if coach.session?.reviewRequired == true || coach.riskLevel != .none || coach.demoWarningActive {
             let review = coach.session?.reviewRequired == true
-            let level: RiskLevel = review ? .high : coach.riskLevel
-            let mm = coach.distanceRisk != .none ? coach.observation.distanceMM : nil
+            let demo = coach.demoWarningActive && !review && coach.riskLevel != .high
+            let level: RiskLevel = review || demo ? .high : coach.riskLevel
+            let mm = !demo && coach.distanceRisk != .none ? coach.observation.distanceMM : nil
             HStack(spacing: 12) {
                 Image(systemName: review ? "exclamationmark.octagon.fill" : level.symbol).font(.title2)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(review ? "CHECK FOR CONTACT" : level.title + (mm.map { String(format: " · %.0f mm", $0) } ?? ""))
+                    Text(review ? "CHECK FOR CONTACT" : (demo ? "DEMO · HIGH RISK" : level.title) + (mm.map { String(format: " · %.0f mm", $0) } ?? ""))
                         .font(.headline.weight(.heavy))
                     Text(review ? "Pause and follow your care team's instructions." : level.advice).font(.subheadline)
                 }
@@ -443,8 +448,8 @@ struct RoutineCoachView: View {
                     } else {
                         Button("Connect wristband") { coach.band.connect() }
                     }
-                } header: { Text("Wristband") } footer: {
-                    Text("Connect before starting. If you're testing different firmware, choose it in Developer mode.")
+                } header: { Text("Wristband (optional)") } footer: {
+                    Text("The phone plays warnings whether or not a band is connected. Connect a band only if you also want vibration. Choose different firmware in Developer mode.")
                 }
                 Section {
                     Text("Connect once before starting. During conversation, your microphone audio goes to Cartesia. Camera images stay on your phone.")
@@ -484,6 +489,11 @@ struct RoutineCoachView: View {
                     Text("Phone voice can guide the checks and listen for replies. Open-ended questions need Cartesia.")
                 }
                 Section {
+                    Toggle("Demo mode", isOn: $coach.demoMode)
+                } header: { Text("Timed warning demo") } footer: {
+                    Text("Plays a high-risk voice warning and sends the high-risk wristband signal for about 2 seconds, starting 8 seconds after ready in each connection and disconnection step. It works without model detections or a wristband. If the band is connected it also vibrates; otherwise Bluetooth is skipped. Pausing freezes the countdown and stops vibration. Demo cues are labeled and are not recorded as detected risk; real camera warnings remain independent.")
+                }
+                Section {
                     Toggle("Developer mode", isOn: $developerMode)
                     Text("Show camera tests, model settings, measurement details and routine debugging.")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -491,6 +501,10 @@ struct RoutineCoachView: View {
                 if developerMode {
                 Section {
                     DisclosureGroup("Developer tools") {
+                        Button("Play medium-risk test warning") { coach.testSpokenWarning(high: false) }
+                        Button("Play high-risk test warning") { coach.testSpokenWarning(high: true) }
+                        Text("Speaker-only tests. No detections or wristband are needed, and no routine step is advanced.")
+                            .font(.footnote)
                         Button("Camera + model test (no voice)") {
                             coach.backgrounded(); showSettings = false
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showModelDebug = true }

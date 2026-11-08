@@ -37,7 +37,8 @@ final class ModelDebugController: ObservableObject {
     var protectionFresh: Bool { capture.isRunning && (frameAge.map { $0 <= 0.25 } ?? false) }
     var proximityText: String {
         guard protectionFresh else { return "Distance unavailable: observation is paused or older than 250 ms." }
-        if let mm = observation.distanceMM {
+        if let mm = observation.distanceMM,
+           FrameFreshness.isFresh(lastReceipt: observation.distanceReceipt, now: ProcessInfo.processInfo.systemUptime, timeout: 0.25) {
             return String(format: "Experimental gap: %.0f mm · %@. This test sends no band or voice commands.", mm, observation.scaleRisk.title)
         }
         switch observation.decision {

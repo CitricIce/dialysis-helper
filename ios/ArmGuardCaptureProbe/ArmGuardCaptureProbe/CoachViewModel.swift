@@ -34,6 +34,22 @@ final class CoachViewModel: ObservableObject {
     @Published private(set) var voiceEnabled = false
     @Published private(set) var ended = false
     @Published var debugControlsEnabled = false
+    @Published var demoMode = UserDefaults.standard.bool(forKey: "sterling.timedDemoMode") {
+        didSet {
+            UserDefaults.standard.set(demoMode, forKey: "sterling.timedDemoMode")
+            demoClock.reset(); demoWarningUntil = 0
+            if !demoMode, riskLevel == .none { band.stop() }
+        }
+    }
+    @Published private var demoWarningUntil = 0.0
+    private var demoWarningCheckID: String?
+    private var demoBandWasActive = false
+    private var demoClock = DemoWarningClock()
+    var demoWarningActive: Bool {
+        demoMode && voiceEnabled && !ended && session?.currentCheck?.id == demoWarningCheckID &&
+            (session?.phase == .monitoring || session?.phase == .unmonitoredPractice) &&
+            ProcessInfo.processInfo.systemUptime < demoWarningUntil
+    }
     private var replyGate = SpokenReplyGate()
     private var progressionGate = SpokenReplyGate()
     private var lastUserCheckID = ""
@@ -57,6 +73,7 @@ final class CoachViewModel: ObservableObject {
     private let haptics = UINotificationFeedbackGenerator()
 
     init() {
+        WarningDistances.migrateDefaults()
         do {
             guard let url = Bundle.main.url(forResource: "RoutineTemplate", withExtension: "json") else {
                 throw CocoaError(.fileNoSuchFile)
@@ -104,7 +121,7 @@ final class CoachViewModel: ObservableObject {
             default: readBackReply = false
             }
             let rehearsalReply = self.session?.phase == .unmonitoredPractice ||
-                (self.session?.phase == .checking && self.session?.currentCheck?.responseKind == .monitoring && self.session?.template.detectorStatus != .experimental)
+                (self.session?.phase == .checking && self.session?.currentCheck?.responseKind == .monitoring && (self.demoMode || self.session?.template.detectorStatus != .experimental))
             if readBackReply || rehearsalReply || [.pause, .resume, .endSession, .skipStep, .skipCamera].contains(intent) {
                 let checkID = self.session?.currentCheck?.id ?? "finished"
                 guard self.replyGate.consume(text, expectedCheckID: checkID, currentCheckID: checkID) != nil else { return }
@@ -139,15 +156,20 @@ final class CoachViewModel: ObservableObject {
     }
     /// Camera-distance (SPINOSAURUS) level from the fixed tip sizes; needs a fresh observation.
     /// Unlike the LiDAR path it runs in every phase, so it warns during rehearsal too.
+    var distanceFresh: Bool {
+        capture.isRunning && observation.distanceReceipt > 0 &&
+            FrameFreshness.isFresh(lastReceipt: observation.distanceReceipt,
+                now: ProcessInfo.processInfo.systemUptime, timeout: 0.25)
+    }
     var distanceRisk: RiskLevel {
-        ProximityFeedback.distanceLevel(fresh: fresh, distanceMM: observation.distanceMM, risk: observation.scaleRisk)
+        ProximityFeedback.distanceLevel(fresh: distanceFresh, distanceMM: observation.distanceMM, risk: observation.scaleRisk)
     }
     var riskLevel: RiskLevel {
         ProximityFeedback.combinedLevel(phase: session?.phase, fresh: fresh, decision: observation.decision,
-            distanceMM: observation.distanceMM, scaleRisk: observation.scaleRisk)
+            distanceMM: observation.distanceMM, scaleRisk: observation.scaleRisk, distanceFresh: distanceFresh)
     }
     var distanceText: String {
-        guard fresh, let mm = observation.distanceMM else { return "Camera distance: waiting for a hand and a connector tip in view" }
+        guard distanceFresh, let mm = observation.distanceMM else { return "Camera distance: waiting for a hand and a connector tip in view" }
         let label = distanceRisk == .high ? "HIGH" : distanceRisk == .medium ? "MEDIUM" : "clear"
         let tip = observation.referenceTip?.detail ?? "connector tip"
         return String(format: "Camera distance %.0f mm · %@ · scale from %@ · experimental", mm, label, tip)
@@ -160,9 +182,8 @@ final class CoachViewModel: ObservableObject {
     }
     var guardState: GuardState {
         guard capture.isRunning, displayFresh else { return .cameraStarting }
-        guard !observation.regions.isEmpty else { return .lookingForTip }
-        guard fresh, let mm = observation.distanceMM else { return .lookingForHand }
-        return .measuring(distanceRisk, mm)
+        if distanceFresh, let mm = observation.distanceMM { return .measuring(distanceRisk, mm) }
+        return observation.regions.isEmpty ? .lookingForTip : .lookingForHand
     }
     func resetStats() { stats = SafetyStats(); statsStarted = Date() }
     /// Opening Live Guard starts the camera; distance warnings, band and voice work without a routine.
@@ -223,6 +244,9 @@ final class CoachViewModel: ObservableObject {
         allowCloudQuestions && speech.connectionReady
     }
     var currentPrompt: String {
+        if demoMode, session?.phase == .checking, session?.currentCheck?.responseKind == .monitoring {
+            return "Say ready to start this demo step, then done when you've finished."
+        }
         if session?.reviewRequired == true { return "Pause and follow your dialysis team's instructions about possible contact. I can't confirm contact from this view." }
         if session?.phase == .paused { return "We're paused. Say resume when you're ready." }
         if session?.phase == .monitoring { return "I'm watching. Say 'done' when you've finished, or say 'pause'." }
@@ -234,6 +258,7 @@ final class CoachViewModel: ObservableObject {
         if session?.reviewRequired == true { return "Possible contact needs review" }
         guard capture.isRunning else { return capture.isStarting ? "Starting camera" : "Camera is not running" }
         guard fresh else { return "Camera analysis is delayed. Distance warnings are unavailable until it catches up." }
+        if observation.distanceHeld && distanceFresh { return "Brief detection dropout; keeping the last near warning for a moment." }
         guard !observation.regions.isEmpty else { return "Looking for a connector tip. No distance warning is available yet." }
         guard observation.distanceMM != nil else { return "Show your hand and the connector tip together so I can estimate the gap." }
         if distanceRisk == .high { return "High risk. Move your hand back." }
@@ -248,7 +273,7 @@ final class CoachViewModel: ObservableObject {
         }
         ended = false; voiceEnabled = true
         band.beginRoutineConnection()
-        resetStats()
+        resetStats(); demoClock.reset(); demoWarningUntil = 0
         session?.start(); persist()
         message = currentPrompt
         startCamera()
@@ -269,7 +294,7 @@ final class CoachViewModel: ObservableObject {
         guard let template = session?.template else { return }
         session = try? RoutineSession(template: template)
         runID = UUID(); logURL = nil; response = ""; scannedLabel = ""; ended = false
-        resetStats()
+        resetStats(); demoClock.reset(); demoWarningUntil = 0
         message = "Start when you're ready for another practice."
     }
     func startCamera() {
@@ -343,7 +368,9 @@ final class CoachViewModel: ObservableObject {
             "visual_mode": session?.phase == .monitoring ? "experimental_monitoring" : "experimental_preview",
             "distance_warnings_enabled": true,
             "distance_warning_level": distanceRisk == .high ? "high" : distanceRisk == .medium ? "medium" : "none",
-            "distance_estimate_fresh": fresh && observation.distanceMM != nil,
+            "distance_estimate_fresh": distanceFresh && observation.distanceMM != nil,
+            "distance_estimate_held": observation.distanceHeld,
+            "distance_estimate_age_ms": observation.distanceReceipt > 0 ? max(0, ProcessInfo.processInfo.systemUptime - observation.distanceReceipt) * 1000 : -1,
             "camera_running": capture.isRunning,
             "camera_status": cameraMessage,
             "wristband_connected": band.connected,
@@ -365,6 +392,9 @@ final class CoachViewModel: ObservableObject {
             "detected_objects": observation.detections.prefix(12).map { ["label": $0.label, "confidence": $0.confidence] as [String: Any] },
             "expected_response": session?.expectedResponse ?? "none",
             "response_instruction": session?.responseInstruction ?? "",
+            "demo_mode": demoMode,
+            "demo_warning_delay_seconds": demoClock.delaySeconds,
+            "demo_warning_active": demoWarningActive,
             "debug_controls_enabled": debugControlsEnabled,
             "debug_navigation_used": session?.debugNavigationUsed ?? false,
             "visible_label_text": String(scannedLabel.prefix(800)),
@@ -412,6 +442,10 @@ final class CoachViewModel: ObservableObject {
         if session?.confirmReadBack() == true { persist(); prompt() }
         else { say("Tell me the details first, then I'll ask you to confirm them.") }
     }
+    /// Speaker-only diagnostic: no fabricated detection, risk statistic or band command.
+    func testSpokenWarning(high: Bool) {
+        say(high ? CoachSpeech.highCue : CoachSpeech.nearCue, urgent: true)
+    }
     func prompt() { say(currentPrompt) }
     func explain() { say(session?.currentCheck?.help ?? currentPrompt) }
     func askQuestion() {
@@ -421,7 +455,7 @@ final class CoachViewModel: ObservableObject {
     }
     func arm() {
         guard session?.reviewRequired != true else { say(currentPrompt); return }
-        if session?.template.detectorStatus != .experimental {
+        if demoMode || session?.template.detectorStatus != .experimental {
             if session?.beginUnmonitoredPractice() == true { band.stop(); persist(); prompt() }
             else { say(currentPrompt) }
             return
@@ -447,6 +481,7 @@ final class CoachViewModel: ObservableObject {
         say("That's the end of preparation practice. The connection wasn't monitored.")
     }
     func pause() {
+        demoWarningUntil = 0
         session?.pause(); band.stop(); persist()
         // Pausing the routine must keep the live microphone and conversation for spoken resume.
         say("We're paused. Take your time. Say resume when you're ready.")
@@ -463,6 +498,7 @@ final class CoachViewModel: ObservableObject {
         didNavigateForDebug()
     }
     private func didNavigateForDebug() {
+        demoWarningUntil = 0
         band.stop(); conversation.stop(); speech.stop(); resumeCloudAfterCue = false
         replyGate = SpokenReplyGate(); progressionGate = SpokenReplyGate()
         lastUserCheckID = ""; lastUserWords = ""; lastUserTurn = -1; nativeCommand = nil
@@ -507,6 +543,13 @@ final class CoachViewModel: ObservableObject {
     }
     private func checkHealth() {
         objectWillChange.send() // Keep displayed frame age/staleness honest between results.
+        if demoClock.update(enabled: demoMode && voiceEnabled && !ended,
+            checkID: session?.currentCheck?.id, phase: session?.phase,
+            at: ProcessInfo.processInfo.systemUptime) {
+            demoWarningCheckID = session?.currentCheck?.id
+            demoWarningUntil = ProcessInfo.processInfo.systemUptime + 2
+            testSpokenWarning(high: true)
+        }
         driveDistanceAlerts()
         if voiceEnabled, !ended, session?.phase != .idle, session?.phase != .completed { band.maintainRoutineConnection() }
         guard session?.phase == .monitoring else { return }
@@ -559,7 +602,7 @@ final class CoachViewModel: ObservableObject {
             else if now - lastHazardTime < 0.3 { band.set(intensity: 80) }
         }
     }
-    /// MEDIUM -> pulsing band + "Careful, too close."; HIGH -> continuous band + "Stop. Hands back."
+    /// MEDIUM -> pulsing band + "Medium risk. Move back."; HIGH -> continuous band + "High risk. Hands back."
     /// Called per result and every 100 ms; BandClient expires each set() after 250 ms, so the
     /// band stops by itself if observations stop arriving.
     private func driveDistanceAlerts() {
@@ -567,7 +610,14 @@ final class CoachViewModel: ObservableObject {
         defer { lastDistanceRisk = level }
         let now = ProcessInfo.processInfo.systemUptime
         stats.record(level: level, distanceMM: observation.distanceMM, at: now,
-                     measuring: fresh && observation.distanceMM != nil)
+                     measuring: distanceFresh && observation.distanceMM != nil)
+        let demo = demoWarningActive
+        let previousDemo = demoBandWasActive
+        defer { demoBandWasActive = demo }
+        if demo {
+            // Voice/demo timing never depends on the band. Only a connected band gets writes.
+            if band.connected { band.set(intensity: 255, suspected: true) }
+        } else {
         switch level {
         case .high:
             band.set(intensity: 255, suspected: true)
@@ -578,10 +628,14 @@ final class CoachViewModel: ObservableObject {
         case .none:
             if lastDistanceRisk != .none, session?.phase != .monitoring { band.stop() }
         }
+        }
+        if previousDemo && !demo && riskLevel == .none { band.stop() }
         // Phone haptics come from received(), since riskLevel includes this level.
         // Voice: one short cue when the danger rises (held 0.3 s), quiet when it drops,
         // HIGH repeated only every 8 s. See WarningCuePolicy. Shares warningTime with the LiDAR cue.
-        guard let cue = cuePolicy.update(level, at: now) else { return }
+        guard let cue = cuePolicy.update(level, at: now,
+            observationAvailable: distanceFresh && observation.distanceMM != nil) else { return }
+        guard !demo else { return }
         warningTime = now
         say(cue == .high ? CoachSpeech.highCue : CoachSpeech.nearCue, urgent: true)
     }

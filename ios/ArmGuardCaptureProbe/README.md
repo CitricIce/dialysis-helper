@@ -8,6 +8,56 @@
 
 Logo concept: [silver-ring wordmark](../../assets/branding/sterling-logo-v1.png).
 
+## Current warning smoothing and timed demo (November 8, 2026)
+
+- **Wider default zones:** HIGH within **15 mm**, MEDIUM within **40 mm** (previously
+  10/30). The existing 5 mm release margin remains. An installed previous-default
+  pair migrates once; other custom settings are preserved. Reset uses 15/40.
+- **Audio without a wristband:** regular and demo voice warnings have no BLE-connected
+  gate. The band is optional throughout setup and practice; it only adds vibration.
+  UI copy and agent instructions must not treat a missing band as a problem. Cached Cartesia clips are used when available, with immediate local phone
+  speech otherwise. The camera/model-only test intentionally has no audio/BLE client;
+  use the main routine/Live Guard to test real cues. Developer tools also offer
+  **Play medium-risk test warning** and **Play high-risk test warning** speaker tests
+  that need neither a model detection nor a wristband.
+- **Smoother output:** decreasing distance or scale takes effect immediately, while
+  increasing clearance is smoothed and warning release uses hysteresis. An already
+  detected hazard may survive a missed measurement for at most 200 ms; a missing
+  initial detection or missing clear reading is never replaced with a fabricated
+  gap. The held estimate keeps its original source timestamp. Audio, visual risk
+  and band routing still reject distance data older than **250 ms including inference
+  time**. Strict depth-monitoring uses the current raw frame, not retained regions.
+- **Voice confirmation across model gaps:** a short interval with no usable estimate
+  no longer restarts the pending 0.3-second warning confirmation on every frame.
+  A cue can only fire on an available fresh estimate. After a loss longer than one
+  second it needs fresh confirmation again. Existing HIGH repeats and escalation
+  rules remain, so the assistant does not continuously repeat the same short warning.
+  Smoothing reduces flicker; it cannot make missed or wrong detections reliable.
+- **Settings → Demo mode:** off by default and saved on the phone. On each connection
+  and disconnection step, saying **ready** starts an 8-second countdown. One scheduled
+  **“High risk. Hands back.”** cue then plays, independently of model results and
+  network TTS generation. If the band is connected, the matching HIGH command is
+  refreshed for about **2 seconds** (legacy E or intensity-v2 [2,255]); otherwise the
+  Bluetooth send is skipped. No wristband is required and no routine step waits for
+  one. Demo ready also bypasses the detector-dependent strict-arming gate, entering
+  explicitly unmonitored practice rather than falsely arming real monitoring.
+- **Pause/disable/exit:** pause freezes a countdown and stops an active demo vibration;
+  done, leaving the step, ending the routine or disabling Demo mode cancels its output.
+  Each active connection/disconnection step fires once. A visible demo badge and
+  **DEMO · HIGH RISK** banner distinguish the scheduled cue. Real detections, distance
+  estimates and statistics are unchanged; scheduled warnings are not recorded as
+  camera-detected hazards. The existing BLE expiry still applies. The simulation
+  bypasses detection, not the need for working phone audio or a connected powered band
+  when vibration is desired. The ordinary speaker-only test buttons send no BLE.
+
+Validation: **62 portable checks, 16 gateway/setup tests, Xcode project validation,
+and all 22 Swift sources type-checked with Apple Mac Catalyst frameworks**. New
+checks cover zone migration, band-free cues across inference gaps, immediate
+approach/gradual release, bounded held timestamps, timed demo once per step,
+pause/cancellation, and detector-independent demo entry. Full Xcode/iPhone build,
+physical speaker/vibration timing and accuracy on real props are not verified here.
+Use demo props to distinguish deterministic output testing from detector testing.
+
 ## Current voice playback and routine warnings (November 8, 2026)
 
 The user reported sound stopping after the first spoken reply while text continued,
@@ -43,8 +93,9 @@ firmware selection that did not persist. The following changes address those gap
 - **Warning behavior:** image-scale MEDIUM/HIGH cues were not removed by the UI
   redesign. They remain independent of strict depth-monitoring and rehearsal phase.
   Fresh usable estimates (source age at most 250 ms) drive the main banner and BLE;
-  no tip/hand measurement or stale analysis produces no distance command. Default
-  zones remain HIGH 10 mm and MEDIUM 30 mm with existing hysteresis. Voice names the
+  missing initial measurements or stale analysis produce no distance command;
+  brief retention of a previous hazard is described above. Default
+  zones are now HIGH 15 mm and MEDIUM 40 mm with existing hysteresis. Voice names the
   level: **“Medium risk. Move back.” / “High risk. Hands back.”** Existing 0.3-second
   voice dwell, escalation-only cues and 8-second sustained-HIGH repeat remain.
 - **Accurate prompts:** the template, native fallback wording, agent instructions and
@@ -72,7 +123,7 @@ firmware selection that did not persist. The following changes address those gap
   BLE write has no motor acknowledgement. No audio bytes, keys or transcripts are
   included in these diagnostic counters.
 
-Validation: **55 portable checks, 16 gateway/setup tests, project validation and
+Validation at that update (superseded by the smoothing/demo checks above): **55 portable checks, 16 gateway/setup tests, project validation and
 all 21 Swift sources type-checked against Apple Mac Catalyst frameworks**. This is
 not an iPhone SDK build or a physical reproduction. On iPhone 15 Pro, test several
 spoken replies, pause/resume, a near approach during connection and disconnection,

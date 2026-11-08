@@ -464,14 +464,14 @@ checks += [
         var tracker = ScaleRiskTracker()
         tracker.sterileTipSizeMM = 10
         tracker.distanceSmoothAlpha = 1   // no smoothing, so each step is exact
-        // Defaults: HIGH within 10 mm, MEDIUM within 30 mm, 5 mm release margin.
+        // Defaults: HIGH within 15 mm, MEDIUM within 40 mm, 5 mm release margin.
         try expect(tracker.update(at(50)) == .none, "Far hand warned")
         try expect(tracker.update(at(20)) == .medium, "MEDIUM band missed")
         try expect(tracker.update(at(5)) == .high, "HIGH band missed")
         try expect(tracker.update(at(13)) == .high, "HIGH released inside hysteresis margin")
-        try expect(tracker.update(at(17)) == .medium, "HIGH not released past margin")
-        try expect(tracker.update(at(33)) == .medium, "MEDIUM released inside hysteresis margin")
-        try expect(tracker.update(at(40)) == .none, "MEDIUM not released past margin")
+        try expect(tracker.update(at(22)) == .medium, "HIGH not released past margin")
+        try expect(tracker.update(at(43)) == .medium, "MEDIUM released inside hysteresis margin")
+        try expect(tracker.update(at(50)) == .none, "MEDIUM not released past margin")
         try expect(tracker.update(at(0)) == .high && tracker.distanceMM == 0, "Fingertip on the tip not HIGH at 0 mm")
         try expect(tracker.update(nil) == .none && tracker.current == .none, "Lost reference kept the warning")
     }),
@@ -493,12 +493,12 @@ checks += [
         cues.reset()
         try expect(cues.update(.high, at: 20) == nil && cues.update(.high, at: 20.4) == .high, "Reset did not start fresh")
     }),
-    ("Warning distances default to 10/30 mm, are editable, and never overlap", {
+    ("Warning distances default to 15/40 mm, are editable, and never overlap", {
         let keys = [WarningDistances.highKey, WarningDistances.mediumKey]
         let saved = keys.map { UserDefaults.standard.object(forKey: $0) }
         defer { for (key, value) in zip(keys, saved) { UserDefaults.standard.set(value, forKey: key) } }
         WarningDistances.reset()
-        try expect(WarningDistances.highMM == 10 && WarningDistances.mediumMM == 30, "Default warning distances changed")
+        try expect(WarningDistances.highMM == 15 && WarningDistances.mediumMM == 40, "Default warning distances changed")
         WarningDistances.mediumMM = 50
         WarningDistances.highMM = 15
         try expect(WarningDistances.highMM == 15 && WarningDistances.mediumMM == 50, "Edited distances not saved")
@@ -511,9 +511,9 @@ checks += [
         WarningDistances.highMM = 1000
         try expect(WarningDistances.highMM == 145 && WarningDistances.mediumMM == 150, "Distances not capped")
         WarningDistances.reset()
-        try expect(WarningDistances.isDefault, "Reset did not restore 10/30 mm")
+        try expect(WarningDistances.isDefault, "Reset did not restore 15/40 mm")
         var tracker = ScaleRiskTracker()
-        try expect(tracker.level(for: 25) == .medium && tracker.level(for: 8) == .high && tracker.level(for: 31) == .none,
+        try expect(tracker.level(for: 25) == .medium && tracker.level(for: 8) == .high && tracker.level(for: 41) == .none,
                    "Tracker defaults differ from the warning-distance defaults")
         tracker.highThresholdMM = 20; tracker.mediumThresholdMM = 60
         try expect(tracker.level(for: 50) == .medium, "Tracker ignored edited distances")
@@ -690,6 +690,117 @@ checks += [
         try expect(DetectionConfidence.preview == 0.9, "Threshold escaped its supported range")
     })
 ]
+
+checks += [
+    ("Warning zone migration enlarges previous defaults once and preserves custom zones", {
+        let name = "sterling-check-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set(10, forKey: WarningDistances.highKey); defaults.set(30, forKey: WarningDistances.mediumKey)
+        WarningDistances.migrateDefaults(in: defaults)
+        try expect(defaults.double(forKey: WarningDistances.highKey) == 15 && defaults.double(forKey: WarningDistances.mediumKey) == 40,
+                   "Installed default zones were not enlarged")
+        defaults.set(20, forKey: WarningDistances.highKey); defaults.set(55, forKey: WarningDistances.mediumKey)
+        WarningDistances.migrateDefaults(in: defaults)
+        try expect(defaults.double(forKey: WarningDistances.highKey) == 20 && defaults.double(forKey: WarningDistances.mediumKey) == 55,
+                   "Subsequent launch overwrote custom zones")
+        defaults.removePersistentDomain(forName: name)
+        defaults.set(25, forKey: WarningDistances.highKey); defaults.set(60, forKey: WarningDistances.mediumKey)
+        WarningDistances.migrateDefaults(in: defaults)
+        try expect(defaults.double(forKey: WarningDistances.highKey) == 25 && defaults.double(forKey: WarningDistances.mediumKey) == 60,
+                   "First upgrade overwrote an existing custom pair")
+    }),
+    ("Band-free voice warnings survive short inference gaps without speaking from stale data", {
+        // No BandClient, BLE connection, Cartesia session or network is needed by cue selection.
+        var cues = WarningCuePolicy()
+        try expect(cues.update(.medium, at: 0) == nil, "Warning skipped confirmation")
+        try expect(cues.update(.none, at: 0.15, observationAvailable: false) == nil, "Stale frame spoke")
+        try expect(cues.update(.medium, at: 0.2) == nil, "Warning spoke before confirmation")
+        try expect(cues.update(.none, at: 0.3, observationAvailable: false) == nil, "Unknown became a warning")
+        try expect(cues.update(.medium, at: 0.4) == .medium, "Inference gaps kept silencing MEDIUM")
+        try expect(cues.update(.high, at: 0.5) == nil, "Escalation skipped confirmation")
+        try expect(cues.update(.none, at: 0.65, observationAvailable: false) == nil, "Stale escalation spoke")
+        try expect(cues.update(.high, at: 0.9) == .high, "Band-free HIGH was not announced")
+        try expect(cues.update(.none, at: 12, observationAvailable: false) == nil, "HIGH repeated on stale observations")
+        try expect(cues.update(.high, at: 12.1) == nil, "Long outage carried old confirmation")
+        try expect(cues.update(.high, at: 12.5) == .high, "Fresh reacquired hazard stayed silent")
+    })
+]
+
+checks += [
+    ("Noisy distances escalate immediately and smooth only the retreat", {
+        var tracker = ScaleRiskTracker(); tracker.sterileTipSizeMM = 10
+        func gap(_ distance: Double) -> ScaleProximityMeasurement {
+            ScaleProximity.measure(fingertips: [SensorPoint(x: 0.41 + distance / 1000, y: 0.405)], hands: [],
+                regions: [ProtectedRegion(x: 0.4, y: 0.4, width: 0.01, height: 0.01)], imageWidth: 1000, imageHeight: 1000)!
+        }
+        try expect(tracker.update(gap(100), at: 10) == .none, "Far gap warned")
+        try expect(tracker.update(gap(10), at: 10.1) == .high && abs((tracker.distanceMM ?? 0) - 10) < 0.001,
+                   "EMA delayed an urgent approach")
+        _ = tracker.update(gap(30), at: 10.2)
+        try expect((tracker.distanceMM ?? 100) < 30, "Retreat flickered straight to raw distance")
+        try expect(tracker.update(gap(0), at: 10.3) == .high && tracker.distanceMM == 0, "Overlap was smoothed away")
+    }),
+    ("Brief model dropouts retain only hazards and never refresh their original timestamp", {
+        var tracker = ScaleRiskTracker(); tracker.sterileTipSizeMM = 10
+        let near = ScaleProximity.measure(fingertips: [SensorPoint(x: 0.42, y: 0.405)], hands: [],
+            regions: [ProtectedRegion(x: 0.4, y: 0.4, width: 0.01, height: 0.01)], imageWidth: 1000, imageHeight: 1000)!
+        try expect(tracker.update(near, at: 10) == .high, "No initial hazard")
+        try expect(tracker.update(nil, at: 10.15) == .high && tracker.measurementTimestamp == 10,
+                   "Short dropout cleared the warning or invented a fresh timestamp")
+        try expect(tracker.update(nil, at: 10.31) == .none && tracker.distanceMM == nil,
+                   "Long dropout kept an old warning")
+        let clear = ScaleProximity.measure(fingertips: [SensorPoint(x: 0.51, y: 0.405)], hands: [],
+            regions: [ProtectedRegion(x: 0.4, y: 0.4, width: 0.01, height: 0.01)], imageWidth: 1000, imageHeight: 1000)!
+        _ = tracker.update(clear, at: 11)
+        try expect(tracker.update(nil, at: 11.1) == .none && tracker.distanceMM == nil,
+                   "Lost detection was presented as a known clear gap")
+        _ = tracker.update(near, at: 12)
+        _ = tracker.update(nil, at: 12.15)
+        let ageOK = FrameFreshness.isFresh(lastReceipt: tracker.measurementTimestamp, now: 12.3, timeout: 0.25)
+        try expect(!ageOK && ProximityFeedback.distanceLevel(fresh: ageOK, distanceMM: tracker.distanceMM, risk: tracker.current) == .none,
+                   "Processing delay let a held estimate bypass the 250 ms limit")
+    })
+]
+
+checks += [
+    ("Demo audio fires once eight seconds into each connection step without a band or model", {
+        var clock = DemoWarningClock()
+        try expect(!clock.update(enabled: false, checkID: "connect", phase: .unmonitoredPractice, at: 0), "Disabled demo fired")
+        try expect(!clock.update(enabled: true, checkID: "connect", phase: .checking, at: 1), "Demo ran before ready")
+        try expect(!clock.update(enabled: true, checkID: "connect", phase: .unmonitoredPractice, at: 2), "Demo fired immediately")
+        try expect(!clock.update(enabled: true, checkID: "connect", phase: .unmonitoredPractice, at: 9.9), "Demo fired early")
+        try expect(clock.update(enabled: true, checkID: "connect", phase: .unmonitoredPractice, at: 10), "Connection demo missed its time")
+        try expect(!clock.update(enabled: true, checkID: "connect", phase: .unmonitoredPractice, at: 30), "Demo repeated in one step")
+        try expect(!clock.update(enabled: true, checkID: "disconnect", phase: .monitoring, at: 31), "New step did not reset countdown")
+        try expect(clock.update(enabled: true, checkID: "disconnect", phase: .monitoring, at: 39), "Disconnection demo did not fire independently")
+    }),
+    ("Demo countdown pauses, cancels when disabled and never runs on other checks", {
+        var clock = DemoWarningClock()
+        _ = clock.update(enabled: true, checkID: "connect", phase: .unmonitoredPractice, at: 0)
+        _ = clock.update(enabled: true, checkID: "connect", phase: .unmonitoredPractice, at: 3)
+        try expect(!clock.update(enabled: true, checkID: "connect", phase: .paused, at: 3), "Pause fired demo")
+        _ = clock.update(enabled: true, checkID: "connect", phase: .paused, at: 100)
+        try expect(!clock.update(enabled: true, checkID: "connect", phase: .unmonitoredPractice, at: 101), "Paused time counted toward demo")
+        try expect(clock.update(enabled: true, checkID: "connect", phase: .unmonitoredPractice, at: 106), "Resume lost elapsed progress")
+        _ = clock.update(enabled: false, checkID: "connect", phase: .unmonitoredPractice, at: 107)
+        try expect(!clock.update(enabled: true, checkID: "connect", phase: .unmonitoredPractice, at: 120), "Disabled countdown carried over")
+        try expect(!clock.update(enabled: true, checkID: "therapy", phase: .checking, at: 200), "Ordinary check got a demo warning")
+        try expect(!clock.update(enabled: true, checkID: "connect", phase: .completed, at: 300), "Finished routine got a demo warning")
+    })
+]
+
+checks.append(("Demo can rehearse an experimental connection without a usable detector", {
+    var session = try readyForMonitoring()
+    try expect(session.template.detectorStatus == .experimental, "Fixture is not strict monitoring")
+    try expect(!session.armMonitoring(visionReady: false), "Detector gate unexpectedly passed")
+    try expect(session.beginUnmonitoredPractice(), "Explicit demo rehearsal still required the detector")
+    var clock = DemoWarningClock()
+    _ = clock.update(enabled: true, checkID: session.currentCheck?.id, phase: session.phase, at: 0)
+    try expect(clock.update(enabled: true, checkID: session.currentCheck?.id, phase: session.phase, at: 8),
+               "Detector-independent demo trigger never fired")
+    try expect(!session.events.contains { $0.kind == "monitoring_armed" }, "Demo falsely armed real monitoring")
+}))
 
 var failures = 0
 for (name, check) in checks {

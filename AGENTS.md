@@ -93,3 +93,17 @@ warnings are unavailable, not that distance is safe. Reuse saved preview confide
 between debug and routine. Preserve the 250 ms freshness rule, warning zones and
 BLE command expiry. Band writes are not motor acknowledgements. Pair/authorize
 before hands-free use; an explicit band disconnect stops automatic retries.
+
+## Current warning/demo defaults
+
+Current defaults are HIGH 15 mm / MEDIUM 40 mm; previous default installations
+migrate once, custom zones are preserved. Approaches escalate immediately and
+clearance is smoothed. Brief hazard dropout retention is at most 200 ms with the
+original measurement timestamp; the 250 ms output freshness limit still applies.
+Unknown frames must not silently reset pending voice confirmation, but must never
+emit a new cue themselves. Audio works without a wristband. Settings Demo mode
+schedules a HIGH voice cue 8 seconds after ready at connect/disconnect, plus a
+roughly 2-second HIGH BLE command ONLY if connected. It bypasses detector readiness
+into unmonitored practice, never fabricates detections/risk metrics, and is visibly
+labeled. Do not make the demo wait for Bluetooth or turn its synthetic warning into
+claimed camera evidence. Pause/disable/exit must stop timed output.

@@ -29,6 +29,8 @@ struct CoachVisionSnapshot {
     var hands: [ProtectedRegion] = []
     var scaleRisk: RiskLevel = .none
     var distanceMM: Double?
+    var distanceReceipt = 0.0
+    var distanceHeld = false
     var mmPerPixel: Double?
     var closestHand: SensorPoint?
     var closestSurface: SensorPoint?
@@ -54,6 +56,8 @@ final class CoachVisionPipeline {
     private var attemptedModelLoad = false
     private var modelError = "Protected-part model not installed"
     private var scaleTracker = ScaleRiskTracker() // worker queue only; tip size is set per frame from the identified tip
+    private var lastScaleMeasurement: ScaleProximityMeasurement?
+    private var lastScaleTip: ConnectorTip?
     private var resetTracker = false
     private var labelRoles: [String: DetectionRole] = [:]
     private var minimumConfidence: Float = Float(DetectionConfidence.preview) // protected by lock
@@ -106,7 +110,9 @@ final class CoachVisionPipeline {
         lock.unlock()
         worker.async { [weak self] in
             guard let self else { return }
-            if freshTracker { self.scaleTracker.reset() }
+            if freshTracker {
+                self.scaleTracker.reset(); self.lastScaleMeasurement = nil; self.lastScaleTip = nil
+            }
             let output = autoreleasepool { () -> CoachVisionSnapshot in
                 var output = self.process(frame, receipt: now, scanLabel: scan, confidence: confidence)
                 if self.includeDebugPreview { output.debugImage = self.debugRenderer.colorPreview(frame) }
@@ -279,11 +285,18 @@ final class CoachVisionPipeline {
             // Warning distances are editable in the app; apply the saved values each frame.
             scaleTracker.highThresholdMM = WarningDistances.highMM
             scaleTracker.mediumThresholdMM = WarningDistances.mediumMM
-            result.scaleRisk = scaleTracker.update(measurement)
+            result.scaleRisk = scaleTracker.update(measurement, at: frame.timestamp)
             result.distanceMM = scaleTracker.distanceMM
+            result.distanceReceipt = scaleTracker.measurementTimestamp ?? 0
+            result.distanceHeld = measurement == nil && scaleTracker.distanceMM != nil
             result.mmPerPixel = scaleTracker.mmPerPixel
-            result.closestHand = measurement?.handPoint
-            result.closestSurface = measurement?.surfacePoint
+            if measurement != nil, result.distanceMM != nil {
+                lastScaleMeasurement = measurement; lastScaleTip = result.referenceTip
+            } else if !result.distanceHeld { lastScaleMeasurement = nil; lastScaleTip = nil }
+            let displayedMeasurement = result.distanceHeld ? lastScaleMeasurement : measurement
+            if result.distanceHeld { result.referenceTip = lastScaleTip }
+            result.closestHand = displayedMeasurement?.handPoint
+            result.closestSurface = displayedMeasurement?.surfacePoint
             if scanLabel {
                 let text = VNRecognizeTextRequest()
                 text.recognitionLevel = .accurate

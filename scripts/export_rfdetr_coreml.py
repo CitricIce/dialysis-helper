@@ -73,6 +73,37 @@ def download_weights(args, dest):
     return found[0]
 
 
+def resolve_classes(args, weights, model):
+    """Map class index -> name. Roboflow-trained checkpoints often store class_names=None, and
+    rfdetr then falls back to COCO names, which would silently break the app's matching."""
+    import torch
+    checkpoint = torch.load(str(weights), map_location="cpu", weights_only=False)
+    head = checkpoint["model"]["class_embed.bias"].shape[0]
+    ck_args = checkpoint.get("args")
+    stored = ck_args.get("class_names") if isinstance(ck_args, dict) else getattr(ck_args, "class_names", None)
+    print(f"Checkpoint class slots: {head}; stored class names: {stored}")
+    placeholder = "_roboflow_placeholder"  # id 0 in Roboflow COCO exports; must not match 'tip'/'hand'
+    if args.classes:
+        names = [n.strip() for n in args.classes.split(",") if n.strip()]
+    elif stored:
+        names = list(stored)
+    elif args.api_key:
+        from roboflow import Roboflow
+        project = Roboflow(api_key=args.api_key).workspace(args.workspace).project(args.project)
+        names = sorted(project.classes.keys())  # Roboflow numbers categories alphabetically after id 0
+        print("Class names from Roboflow project (alphabetical):", names)
+    else:
+        sys.exit("The checkpoint has no class names. Re-run with --classes 'name1,name2' "
+                 "(the names shown in your Roboflow project, alphabetical).")
+    if len(names) == head - 1:
+        mapping = {0: placeholder, **{i + 1: n for i, n in enumerate(names)}}
+    elif len(names) == head:
+        mapping = dict(enumerate(names))
+    else:
+        sys.exit(f"{len(names)} class names given but the model has {head} class slots.")
+    return {str(k): str(v) for k, v in mapping.items()}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--api-key", default=os.environ.get("ROBOFLOW_API_KEY"))
@@ -83,6 +114,8 @@ def main():
     parser.add_argument("--weights", help="local weights.pt / checkpoint.pth (skips the download)")
     parser.add_argument("--image", help="test photo to compare Core ML decoding against rfdetr.predict")
     parser.add_argument("--out", default=str(DEFAULT_OUT))
+    parser.add_argument("--classes", help="comma-separated class names for ids 1..N, e.g. 'hand,tip' "
+                        "(Roboflow reserves id 0). Needed when the checkpoint stores no names.")
     parser.add_argument("--fp32", action="store_true", help="export float32 (bigger, no Neural Engine)")
     args = parser.parse_args()
 
@@ -98,9 +131,7 @@ def main():
     from rfdetr import RFDETRSmall
     model = RFDETRSmall(pretrain_weights=str(weights))
     resolution = int(model.model_config.resolution)
-    names = model.class_names
-    pairs = names.items() if isinstance(names, dict) else enumerate(names)
-    classes = {str(int(k)): str(v) for k, v in pairs}
+    classes = resolve_classes(args, weights, model)
     print(f"Resolution: {resolution}")
     print("Classes and how the app will use them:")
     for k, v in sorted(classes.items(), key=lambda kv: int(kv[0])):

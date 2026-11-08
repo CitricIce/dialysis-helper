@@ -11,3 +11,8 @@ xcuserdata/
 .env
 .env.*
 !.env.example
+
+# Model weights (too large for git)
+models/
+*.pt
+*.pth

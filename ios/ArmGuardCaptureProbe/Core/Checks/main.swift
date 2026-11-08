@@ -464,15 +464,41 @@ checks += [
         var tracker = ScaleRiskTracker()
         tracker.sterileTipSizeMM = 10
         tracker.distanceSmoothAlpha = 1   // no smoothing, so each step is exact
-        try expect(tracker.update(at(100)) == .none, "Far hand warned")
-        try expect(tracker.update(at(60)) == .medium, "MEDIUM band missed")
-        try expect(tracker.update(at(20)) == .high, "HIGH band missed")
-        try expect(tracker.update(at(33)) == .high, "HIGH released inside hysteresis margin")
-        try expect(tracker.update(at(40)) == .medium, "HIGH not released past margin")
-        try expect(tracker.update(at(83)) == .medium, "MEDIUM released inside hysteresis margin")
-        try expect(tracker.update(at(90)) == .none, "MEDIUM not released past margin")
+        // Defaults: HIGH within 10 mm, MEDIUM within 30 mm, 5 mm release margin.
+        try expect(tracker.update(at(50)) == .none, "Far hand warned")
+        try expect(tracker.update(at(20)) == .medium, "MEDIUM band missed")
+        try expect(tracker.update(at(5)) == .high, "HIGH band missed")
+        try expect(tracker.update(at(13)) == .high, "HIGH released inside hysteresis margin")
+        try expect(tracker.update(at(17)) == .medium, "HIGH not released past margin")
+        try expect(tracker.update(at(33)) == .medium, "MEDIUM released inside hysteresis margin")
+        try expect(tracker.update(at(40)) == .none, "MEDIUM not released past margin")
         try expect(tracker.update(at(0)) == .high && tracker.distanceMM == 0, "Fingertip on the tip not HIGH at 0 mm")
         try expect(tracker.update(nil) == .none && tracker.current == .none, "Lost reference kept the warning")
+    }),
+    ("Warning distances default to 10/30 mm, are editable, and never overlap", {
+        let keys = [WarningDistances.highKey, WarningDistances.mediumKey]
+        let saved = keys.map { UserDefaults.standard.object(forKey: $0) }
+        defer { for (key, value) in zip(keys, saved) { UserDefaults.standard.set(value, forKey: key) } }
+        WarningDistances.reset()
+        try expect(WarningDistances.highMM == 10 && WarningDistances.mediumMM == 30, "Default warning distances changed")
+        WarningDistances.mediumMM = 50
+        WarningDistances.highMM = 15
+        try expect(WarningDistances.highMM == 15 && WarningDistances.mediumMM == 50, "Edited distances not saved")
+        WarningDistances.highMM = 60
+        try expect(WarningDistances.mediumMM == 65, "MEDIUM not pushed outside a larger HIGH")
+        WarningDistances.mediumMM = 20
+        try expect(WarningDistances.mediumMM == 65, "MEDIUM allowed inside HIGH")
+        WarningDistances.highMM = 0
+        try expect(WarningDistances.highMM == WarningDistances.lowestMM, "HIGH below the minimum")
+        WarningDistances.highMM = 1000
+        try expect(WarningDistances.highMM == 145 && WarningDistances.mediumMM == 150, "Distances not capped")
+        WarningDistances.reset()
+        try expect(WarningDistances.isDefault, "Reset did not restore 10/30 mm")
+        var tracker = ScaleRiskTracker()
+        try expect(tracker.level(for: 25) == .medium && tracker.level(for: 8) == .high && tracker.level(for: 31) == .none,
+                   "Tracker defaults differ from the warning-distance defaults")
+        tracker.highThresholdMM = 20; tracker.mediumThresholdMM = 60
+        try expect(tracker.level(for: 50) == .medium, "Tracker ignored edited distances")
     }),
     ("Connector tips have fixed sizes and are told apart by colour", {
         try expect(ConnectorTip.blue.sizeMM == 8 && ConnectorTip.clear.sizeMM == 13, "Fixed tip sizes changed")

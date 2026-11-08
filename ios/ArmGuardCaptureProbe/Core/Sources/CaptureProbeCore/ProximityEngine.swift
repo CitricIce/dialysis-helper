@@ -208,13 +208,53 @@ public enum ScaleProximity {
     }
 }
 
+/// Warning distances, fingertip to the tip's nearest edge. Defaults: HIGH within 10 mm,
+/// MEDIUM within 30 mm. Editable in the app's Connectors sheet, saved on the phone and
+/// applied to the tracker on every frame. HIGH always stays at least `minimumGapMM`
+/// inside MEDIUM, so the two zones never overlap.
+public enum WarningDistances {
+    public static let defaultHighMM = 10.0
+    public static let defaultMediumMM = 30.0
+    public static let stepMM = 5.0
+    public static let minimumGapMM = 5.0
+    public static let lowestMM = 5.0
+    public static let highestMM = 150.0
+    public static let highKey = "warningDistanceMM.high"
+    public static let mediumKey = "warningDistanceMM.medium"
+
+    private static func clamp(_ value: Double, _ low: Double, _ high: Double) -> Double { min(max(value, low), high) }
+    private static func stored(_ key: String) -> Double? {
+        let value = UserDefaults.standard.double(forKey: key) // 0 when never set
+        return value > 0 && value.isFinite ? value : nil
+    }
+    public static var highRangeMM: ClosedRange<Double> { lowestMM...(highestMM - minimumGapMM) }
+    public static var mediumRangeMM: ClosedRange<Double> { (highMM + minimumGapMM)...highestMM }
+
+    public static var highMM: Double {
+        get { clamp(stored(highKey) ?? defaultHighMM, highRangeMM.lowerBound, highRangeMM.upperBound) }
+        set {
+            UserDefaults.standard.set(clamp(newValue, highRangeMM.lowerBound, highRangeMM.upperBound), forKey: highKey)
+            if mediumMM < highMM + minimumGapMM { mediumMM = highMM + minimumGapMM } // push MEDIUM out
+        }
+    }
+    public static var mediumMM: Double {
+        get { clamp(stored(mediumKey) ?? defaultMediumMM, highMM + minimumGapMM, highestMM) }
+        set { UserDefaults.standard.set(clamp(newValue, highMM + minimumGapMM, highestMM), forKey: mediumKey) }
+    }
+    public static func reset() {
+        UserDefaults.standard.removeObject(forKey: highKey)
+        UserDefaults.standard.removeObject(forKey: mediumKey)
+    }
+    public static var isDefault: Bool { highMM == defaultHighMM && mediumMM == defaultMediumMM }
+}
+
 /// Stateful smoothing + thresholds. Mirrors the constants block of SPINOSAURUS.py.
 public struct ScaleRiskTracker {
     /// Real size of the sterile catheter tip as seen by the camera (longest side). MEASURE YOURS.
     // No assumed prop size: scale estimates are diagnostics until explicitly calibrated.
     public var sterileTipSizeMM: Double?
-    public var highThresholdMM = 30.0     // <= this: HIGH RISK
-    public var mediumThresholdMM = 80.0   // <= this: MEDIUM RISK
+    public var highThresholdMM = WarningDistances.defaultHighMM     // <= this: HIGH RISK
+    public var mediumThresholdMM = WarningDistances.defaultMediumMM // <= this: MEDIUM RISK
     public var scaleSmoothAlpha = 0.20    // SCALE_SMOOTH_ALPHA
     public var distanceSmoothAlpha = 0.25 // DISTANCE_SMOOTH_ALPHA
     /// Hysteresis: a level is only released once the distance is this far past its threshold,

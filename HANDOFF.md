@@ -1,5 +1,36 @@
 # Handoff: hand-to-sterile-tip proximity warnings (RF-DETR + vibration band)
 
+## Smaller, editable warning zones: HIGH 10 mm, MEDIUM 30 mm (November 8)
+
+The red high-risk circle was far too big. **The old high-risk distance is now the
+medium-risk distance**, and both are editable in the app (`WarningDistances` in
+`ProximityEngine.swift`, the Connectors sheet in `LiveGuardView.swift`):
+
+| Level | Was | Now (default) | Feedback (unchanged) |
+|---|---|---|---|
+| HIGH RISK | within 30 mm | **within 10 mm** | red banner, continuous band, repeated voice cue |
+| MEDIUM RISK | within 80 mm | **within 30 mm** | orange banner, pulsing band, "getting close" cue |
+
+- **Where to change them:** the home **Connectors** tile, the ruler chip in Live Guard's
+  top bar, or gear → Settings → Connector tips → **Warning zones**. Each level has a
+  − / + stepper in 5 mm steps. **Reset to 10 mm and 30 mm** appears once either differs.
+- **Rules:** HIGH is 5–145 mm. MEDIUM always stays at least 5 mm outside HIGH (raising
+  HIGH pushes MEDIUM out), up to 150 mm. The 5 mm release margin (hysteresis) is unchanged.
+- Values are saved on the phone (`UserDefaults`, keys `warningDistanceMM.high` /
+  `warningDistanceMM.medium`). The vision pipeline applies them to the risk tracker on
+  every frame, so changes take effect immediately in the warnings, the drawn circles,
+  the gauge (scale now 0 to twice the MEDIUM distance, at least 60 mm), the safety
+  summary and the shared care-team text.
+- **Connector tip sizes are unchanged:** blue 8 mm, clear 13 mm, fixed.
+- **Bundled model:** `SterileParts.mlpackage` was replaced with newly trained RF-DETR
+  Small weights (512 px, same class IDs: 0 placeholder, 1 `Hand`, 2
+  `Sterile_connector_tip`). `detectorStatus` is still `placeholder`.
+- Earlier sections that describe 30 mm / 80 mm zones are superseded by this one.
+- **Verified:** 44 portable checks (hysteresis check updated for 10/30 mm; new check for
+  defaults, editing, overlap rules, caps and reset), 16 gateway tests, project
+  membership, and all app sources type-checked against Mac Catalyst frameworks.
+  **Not verified:** iPhone SDK build, the steppers on a phone, and zone size against a ruler.
+
 ## Earlier features restored and Roboflow model visible again (November 8)
 
 The consumer redesigns had hidden or moved features the team relied on. The Roboflow

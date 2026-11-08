@@ -33,9 +33,11 @@ extension RiskLevel {
     }
 }
 
+/// The saved warning distances (editable in the Connectors sheet). Read live, so views
+/// redrawn every frame pick up changes; other screens observe `WarningSettings`.
 enum GuardThresholds {
-    static let high = ScaleRiskTracker().highThresholdMM
-    static let medium = ScaleRiskTracker().mediumThresholdMM
+    static var high: Double { WarningDistances.highMM }
+    static var medium: Double { WarningDistances.mediumMM }
 }
 
 // MARK: - Overlay drawn on the analysed camera frame
@@ -50,7 +52,7 @@ private struct SensorMapper {
     }
 }
 
-/// Sterile tip with its centre, safe zones drawn at the real 30/80 mm distances, fingertips,
+/// Sterile tip with its centre, safe zones drawn at the saved HIGH/MEDIUM distances, fingertips,
 /// and the measured gap. Distance is to the tip's nearest EDGE, not its centre: contamination
 /// happens when a finger reaches any part of the tip, and centre distance would overstate the
 /// gap by half the tip's size.
@@ -139,7 +141,7 @@ struct GuardOverlay: View {
 
 struct DistanceGauge: View {
     let millimetres: Double?
-    private let maxMM = 120.0
+    private var maxMM: Double { max(60, GuardThresholds.medium * 2) }
 
     var body: some View {
         GeometryReader { geometry in
@@ -165,7 +167,7 @@ struct DistanceGauge: View {
                 Text("\(Int(GuardThresholds.high))").frame(width: 30)
                 Spacer()
                 Text("\(Int(GuardThresholds.medium))").frame(width: 30)
-                Spacer(); Text("120+ mm")
+                Spacer(); Text("\(Int(maxMM))+ mm")
             }.font(.caption2).foregroundStyle(.secondary).offset(y: 18)
         }
         .padding(.bottom, 16)
@@ -358,8 +360,19 @@ extension ConnectorTip {
     var tint: Color { self == .blue ? .blue : Color(red: 0.85, green: 0.9, blue: 0.95) }
 }
 
+/// Publishes the saved warning distances so the Connectors sheet updates as they change.
+final class WarningSettings: ObservableObject {
+    @Published private(set) var high = WarningDistances.highMM
+    @Published private(set) var medium = WarningDistances.mediumMM
+    func setHigh(_ millimetres: Double) { WarningDistances.highMM = millimetres; reload() }
+    func setMedium(_ millimetres: Double) { WarningDistances.mediumMM = millimetres; reload() }
+    func reset() { WarningDistances.reset(); reload() }
+    private func reload() { high = WarningDistances.highMM; medium = WarningDistances.mediumMM }
+}
+
 struct ConnectorsSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var warnings = WarningSettings()
 
     var body: some View {
         NavigationStack {
@@ -383,11 +396,18 @@ struct ConnectorsSheet: View {
                     Text("These sizes are fixed. ArmGuard tells the tips apart by colour and uses the tip's real size to turn pixels into millimetres.")
                 }
                 Section {
-                    zoneRow(.high, "Within \(Int(GuardThresholds.high)) mm", "Red warning, continuous vibration")
-                    zoneRow(.medium, "Within \(Int(GuardThresholds.medium)) mm", "Orange warning, pulsing vibration")
+                    zoneRow(.high, "Within \(Int(warnings.high)) mm", "Red warning, continuous vibration",
+                            value: Binding(get: { warnings.high }, set: { warnings.setHigh($0) }),
+                            range: WarningDistances.highRangeMM)
+                    zoneRow(.medium, "Within \(Int(warnings.medium)) mm", "Orange warning, pulsing vibration",
+                            value: Binding(get: { warnings.medium }, set: { warnings.setMedium($0) }),
+                            range: (warnings.high + WarningDistances.minimumGapMM)...WarningDistances.highestMM)
                     zoneRow(.none, "Farther away", "No warning")
+                    if warnings.high != WarningDistances.defaultHighMM || warnings.medium != WarningDistances.defaultMediumMM {
+                        Button("Reset to \(Int(WarningDistances.defaultHighMM)) mm and \(Int(WarningDistances.defaultMediumMM)) mm") { warnings.reset() }
+                    }
                 } header: { Text("Warning zones") } footer: {
-                    Text("Measured from your nearest fingertip to the nearest edge of the tip. Experimental 2D estimate; it cannot confirm contact or sterility.")
+                    Text("Measured from your nearest fingertip to the nearest edge of the tip. Use − and + to resize the red and orange circles; changes apply straight away and stay saved on this phone. Experimental 2D estimate; it cannot confirm contact or sterility.")
                 }
             }
             .navigationTitle("Connectors").navigationBarTitleDisplayMode(.inline)
@@ -395,12 +415,20 @@ struct ConnectorsSheet: View {
         }
     }
 
-    private func zoneRow(_ level: RiskLevel, _ title: String, _ detail: String) -> some View {
+    private func zoneRow(_ level: RiskLevel, _ title: String, _ detail: String,
+                         value: Binding<Double>? = nil, range: ClosedRange<Double> = 0...0) -> some View {
         HStack(spacing: 12) {
             Image(systemName: level.symbol).foregroundStyle(level.color).frame(width: 24)
             VStack(alignment: .leading) {
                 Text(level == .none ? "Safe" : level.title.capitalized).font(.headline)
                 Text("\(title) · \(detail)").font(.footnote).foregroundStyle(.secondary)
+            }
+            if let value {
+                Spacer()
+                Stepper("", value: value, in: range, step: WarningDistances.stepMM)
+                    .labelsHidden()
+                    .accessibilityLabel("\(level.title.capitalized) distance")
+                    .accessibilityValue("\(Int(value.wrappedValue)) millimetres")
             }
         }
     }

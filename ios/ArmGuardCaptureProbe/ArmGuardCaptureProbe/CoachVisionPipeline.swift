@@ -276,6 +276,9 @@ final class CoachVisionPipeline {
                 result.referenceTip = result.regionTips[measurement.referenceIndex]
                 scaleTracker.sterileTipSizeMM = result.referenceTip?.sizeMM
             }
+            // Warning distances are editable in the app; apply the saved values each frame.
+            scaleTracker.highThresholdMM = WarningDistances.highMM
+            scaleTracker.mediumThresholdMM = WarningDistances.mediumMM
             result.scaleRisk = scaleTracker.update(measurement)
             result.distanceMM = scaleTracker.distanceMM
             result.mmPerPixel = scaleTracker.mmPerPixel

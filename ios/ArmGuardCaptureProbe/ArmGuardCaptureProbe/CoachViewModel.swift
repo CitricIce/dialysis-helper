@@ -173,7 +173,7 @@ final class CoachViewModel: ObservableObject {
         } else {
             lines.append("Distance measured for \(measured / 60) min \(measured % 60) s")
             if let closest = stats.closestMM { lines.append(String(format: "Closest approach to the sterile tip: %.0f mm", closest)) }
-            lines.append("Warnings: \(stats.highAlerts) high risk (≤ 30 mm), \(stats.mediumAlerts) medium risk (≤ 80 mm)")
+            lines.append("Warnings: \(stats.highAlerts) high risk (≤ \(Int(WarningDistances.highMM)) mm), \(stats.mediumAlerts) medium risk (≤ \(Int(WarningDistances.mediumMM)) mm)")
             if let safe = stats.safeFraction { lines.append(String(format: "Time outside warning zones: %.0f%%", safe * 100)) }
             lines.append(String(format: "Longest stretch without a warning: %.0f s", stats.longestSafeStreak))
         }

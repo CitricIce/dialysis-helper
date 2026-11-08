@@ -119,6 +119,18 @@ public enum RiskLevel: Int, Comparable {
     public static func < (lhs: RiskLevel, rhs: RiskLevel) -> Bool { lhs.rawValue < rhs.rawValue }
 }
 
+/// One source for display/haptic severity. Detection outside an armed routine cannot alert.
+public enum ProximityFeedback {
+    public static func level(phase: RoutinePhase?, fresh: Bool, decision: ProximityDecision) -> RiskLevel {
+        guard phase == .monitoring, fresh else { return .none }
+        switch decision {
+        case .projectedOverlap: return .high
+        case .warning(let intensity, _): return intensity >= 200 ? .high : .medium
+        default: return .none
+        }
+    }
+}
+
 public struct ScaleProximityMeasurement: Equatable {
     /// Closest hand-to-surface gap in image pixels (0 = overlapping in the image).
     public let distancePixels: Double
@@ -179,7 +191,8 @@ public enum ScaleProximity {
 /// Stateful smoothing + thresholds. Mirrors the constants block of SPINOSAURUS.py.
 public struct ScaleRiskTracker {
     /// Real size of the sterile catheter tip as seen by the camera (longest side). MEASURE YOURS.
-    public var sterileTipSizeMM = 10.0
+    // No assumed prop size: scale estimates are diagnostics until explicitly calibrated.
+    public var sterileTipSizeMM: Double?
     public var highThresholdMM = 30.0     // <= this: HIGH RISK
     public var mediumThresholdMM = 80.0   // <= this: MEDIUM RISK
     public var scaleSmoothAlpha = 0.20    // SCALE_SMOOTH_ALPHA
@@ -197,8 +210,12 @@ public struct ScaleRiskTracker {
     }
 
     public mutating func update(_ measurement: ScaleProximityMeasurement?) -> RiskLevel {
-        guard let measurement else { distanceMM = nil; return .none }
-        let scale = Self.ema(mmPerPixel, sterileTipSizeMM / measurement.referencePixels, scaleSmoothAlpha)
+        guard let size = sterileTipSizeMM, size.isFinite, size > 0,
+              let measurement, measurement.referencePixels.isFinite, measurement.referencePixels > 0,
+              measurement.distancePixels.isFinite, measurement.distancePixels >= 0 else {
+            reset(); return .none
+        }
+        let scale = Self.ema(mmPerPixel, size / measurement.referencePixels, scaleSmoothAlpha)
         mmPerPixel = scale
         let raw = measurement.distancePixels * scale
         // Overlap reports immediately; smoothing must not delay the most serious case.
@@ -210,5 +227,70 @@ public struct ScaleRiskTracker {
         if millimetres <= highThresholdMM { return .high }
         if millimetres <= mediumThresholdMM { return .medium }
         return .none
+    }
+}
+
+/// Exact class roles. Whole connector bodies and ambiguous names are not protected openings.
+public enum DetectionRole: String, Codable { case protectedOpening, fingertip, hand, ignored }
+
+public enum DetectionLabels {
+    public static func normalize(_ value: String) -> String {
+        value.lowercased().replacingOccurrences(of: "-", with: "_").replacingOccurrences(of: " ", with: "_")
+    }
+    public static func role(for label: String) -> DetectionRole {
+        switch normalize(label) {
+        case "sterile_tip", "sterile_connector_tip", "cap_interior", "connector_opening", "catheter_tip": return .protectedOpening
+        case "fingertip", "thumb_tip", "index_tip", "middle_tip", "ring_tip", "little_tip": return .fingertip
+        case "hand", "hands", "glove", "gloved_hand": return .hand
+        default: return .ignored
+        }
+    }
+}
+
+public struct DecodedDetection {
+    public let label: String
+    public let confidence: Float
+    /// Portrait image, top-left origin. Conversion to sensor coordinates happens once downstream.
+    public let box: ProtectedRegion
+}
+
+/// RF-DETR's exported contract: normalized cxcywh boxes, raw independent class logits.
+/// Background index comes from training metadata, never from tensor width or label sorting.
+public enum RFDETRDecoding {
+    public enum DecodeError: Error { case invalidShape, invalidMetadata, nonFiniteOutput }
+    public static func decode(boxes: [Float], logits: [Float], queries: Int, classCount: Int,
+                              classes: [Int: String], backgroundClassID: Int?,
+                              threshold: Float = 0.45) throws -> [DecodedDetection] {
+        guard queries > 0, classCount > 0, boxes.count == queries * 4,
+              logits.count == queries * classCount else { throw DecodeError.invalidShape }
+        guard threshold.isFinite, threshold >= 0, threshold <= 1, !classes.isEmpty,
+              classes.keys.allSatisfy({ $0 >= 0 && $0 < classCount }),
+              backgroundClassID.map({ $0 >= 0 && $0 < classCount }) ?? true else { throw DecodeError.invalidMetadata }
+        guard boxes.allSatisfy(\.isFinite), logits.allSatisfy(\.isFinite) else { throw DecodeError.nonFiniteOutput }
+        var detections: [DecodedDetection] = []
+        for query in 0..<queries {
+            let values = Array(boxes[(query * 4)..<(query * 4 + 4)])
+            var best: Int?
+            for column in 0..<classCount where column != backgroundClassID {
+                if best == nil || logits[query * classCount + column] > logits[query * classCount + best!] { best = column }
+            }
+            guard let best, let label = classes[best] else { continue }
+            let raw = logits[query * classCount + best]
+            let score: Float
+            if raw >= 0 { score = 1 / (1 + exp(-raw)) }
+            else { let exponential = exp(raw); score = exponential / (1 + exponential) }
+            guard score >= threshold else { continue }
+            // Normalized means image-relative units; boxes may extend beyond
+            // the frame. Clip corners, never infer a different unit system.
+            guard values[2] > 0, values[3] > 0 else { continue }
+            let left = max(0, Double(values[0] - values[2] / 2))
+            let top = max(0, Double(values[1] - values[3] / 2))
+            let right = min(1, Double(values[0] + values[2] / 2))
+            let bottom = min(1, Double(values[1] + values[3] / 2))
+            guard right > left, bottom > top else { continue }
+            detections.append(DecodedDetection(label: label, confidence: score,
+                box: ProtectedRegion(x: left, y: top, width: right - left, height: bottom - top)))
+        }
+        return detections
     }
 }

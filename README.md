@@ -12,14 +12,15 @@ the iPhone; the earlier Mac/Continuity Camera stack remains an alternative.
 
 The [native iPhone prototype](ios/ArmGuardCaptureProbe/README.md) now includes
 practice routines, on-device hand tracking, label OCR, a Core ML detector adapter,
-BLE feedback, local voice and optional dynamic Cartesia voice Q&A. The original
-camera/LiDAR test remains a separate tab. A trained protected-part model is **not
-included**; monitoring stays unavailable without one. No printed markers are
-needed for these tests.
+BLE feedback and a continuous Cartesia voice conversation with a phone-voice
+fallback. The camera/LiDAR test is under Developer tools in setup. The teammate's
+RF-DETR Small protected-tip model is included and compiled by Xcode. Its detection
+accuracy and usable latency still need testing on actual props. No printed markers
+are needed for these tests.
 
 Full Xcode and a physical LiDAR phone are needed to compile/install and verify the
-iOS app. This workspace has only Command Line Tools; app source has been syntax
-checked, not built against an iOS SDK. The routine is practice-only until the PD
+iOS app. This workspace has only Command Line Tools; app sources are type-checked
+against Mac Catalyst frameworks, but not built against an iPhone SDK. The routine is practice-only until the PD
 team's specific protocol and prescription are supplied and reviewed.
 
 The Adafruit motor supports variable intensity through PWM. The updated firmware
@@ -28,10 +29,13 @@ with a 300 ms receive watchdog. Select the installed firmware protocol in the ap
 flash the update before selecting v2. Firmware compilation and motor behavior
 still require the actual Arduino toolchain/board.
 
-Vision, alerts and BLE run locally. Dynamic questions optionally use a
-[Cartesia gateway](services/voice_gateway/README.md); it keeps the API key off the
-phone. Cartesia TTS alone does not answer questions: live Q&A also needs a
-configured, published Managed Agent. No live API calls have been made.
+Vision, alerts and BLE run locally. Conversational voice connects directly from
+the phone to Cartesia by default: enter the authorized API key once in Voice setup;
+it stays in the iPhone Keychain. No laptop or local server needs to remain running.
+Internet is required for Cartesia. The [gateway](services/voice_gateway/README.md)
+is optional for a future hosted setup that keeps a shared provider key off devices.
+Conversation also needs Managed Agents access. The included setup command creates
+the dedicated agent and tools through the API without the account owner's login. Live agent creation, voice generation, streaming audio and a synthetic spoken-reply/tool loop have passed. Physical iPhone audio and latency still need testing.
 
 ## Check before installing
 

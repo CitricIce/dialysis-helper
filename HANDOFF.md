@@ -1,5 +1,39 @@
 # Handoff: hand-to-sterile-tip proximity warnings (RF-DETR + vibration band)
 
+## Integration review, November 7, 2026
+
+The newer working tree integrates commit `60595b5` with the hands-free Cartesia
+routine. The notes below describe the original teammate implementation; this
+section supersedes its decoder, warning-loop and voice-setup details.
+
+- Model is bundled in the target. Learned weights are unchanged. Added explicit
+  metadata for logits, normalized boxes, reserved slot 0 and exact class roles.
+- RFDETRDetector now lives in its own Swift file. It validates tensor contracts,
+  names outputs explicitly, applies sigmoid without heuristics and reuses input
+  storage. Hand boxes are diagnostic; Apple Vision supplies fingertip coverage.
+- Removed the parallel timer that could send band commands while paused. Banner,
+  phone feedback, speech and band follow the native armed routine. The uncalibrated
+  10 mm image-scale assumption no longer drives alerts or presents millimetres.
+- Kept the conversational UI and natural spoken check replies. Direct iPhone-to-
+  Cartesia access is now default, with the user-entered API key in Keychain. Voice
+  and agent IDs are prefilled. The laptop gateway is stopped and optional.
+- The alternate vibration sketch now honors zero/variable v2 duty, cancels test
+  buzzes on stop/disconnect and bounds legacy warnings. Firmware still needs the
+  actual Arduino compiler/board test.
+- Regression checks cover decoder/background/class roles, paused/stale gating,
+  calibration loss, direct HTTPS request construction and WAV finalization.
+- Validation passed: 26 portable logic checks, 13 gateway/setup checks, all 15
+  Swift sources type-checked with Apple Catalyst frameworks, and actual Mac Core ML
+  compile/load, RGB/portrait/normalization/input-reuse and prediction/decoding tests.
+  Warm Mac CPU processing was 187.4 ms on the generated test pattern; this is not
+  a phone or end-to-end latency result. Boxes may validly extend outside the image
+  and are clipped rather than guessed to be pixel coordinates.
+- Direct native Cartesia speech, streaming WAV finalization, session creation,
+  WebSocket readiness and agent audio passed with the laptop gateway stopped.
+- Full Xcode/iPhone compilation, actual-prop detection accuracy, microphone/echo
+  behavior and physical warning latency remain unverified in this workspace.
+
+
 Paste into Claude Code: "Read HANDOFF.md and continue from Open work."
 
 Landed on `main` in commits `6a2f2ba` and `4411fcc` (2026-11-07). **Nothing here has been compiled or run yet**:

@@ -3,11 +3,17 @@ import Combine
 import Foundation
 import UIKit
 
-/// Explicit opt-in cloud conversation. No workflow mutation callback exists.
+/// One opt-in conversation; native tools enforce routine transitions.
 final class CartesiaConversation: ObservableObject {
     @Published private(set) var active = false
-    @Published private(set) var status = "Voice questions are optional"
+    @Published private(set) var status = "Voice is ready to connect"
     @Published private(set) var transcript = ""
+    @Published private(set) var lastReply = ""
+    var onReady: (() -> Void)?
+    var onFailure: ((String) -> Void)?
+    var onUserUtterance: ((String, Int) -> Void)?
+    var onTool: ((String, [String: Any]) -> (String, Bool))?
+    private var toolResults: [String: (String, Bool)] = [:]
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let wire = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: true)!
@@ -31,38 +37,34 @@ final class CartesiaConversation: ObservableObject {
         engine.connect(player, to: engine.mainMixerNode, format: playback)
     }
 
-    func start(base: URL, gatewayToken: String, checkID: String) {
+    func start(request: URLRequest) {
         stop()
         guard UIApplication.shared.applicationState == .active else { return }
+        active = true // Own the microphone while its permission prompt is pending.
         let permissionGeneration = generation
         guard AVAudioApplication.shared.recordPermission == .granted else {
             AVAudioApplication.requestRecordPermission { [weak self] allowed in
                 DispatchQueue.main.async {
                     guard let self, self.generation == permissionGeneration else { return }
-                    if allowed { self.start(base: base, gatewayToken: gatewayToken, checkID: checkID) }
-                    else { self.status = "Microphone permission is required for voice questions." }
+                    if allowed { self.start(request: request) }
+                    else { self.fail("Allow microphone access to use voice.") }
                 }
             }
             return
         }
         active = true
         status = "Connecting to Cartesia…"
-        transcript = ""
+        transcript = ""; lastReply = ""; toolResults.removeAll()
         let token = generation
-        var request = URLRequest(url: base.appendingPathComponent("agent-session"))
-        request.httpMethod = "POST"
-        request.timeoutInterval = 15
-        request.setValue("Bearer \(gatewayToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["check_id": checkID])
         bootstrap = Task { @MainActor [weak self] in
             do {
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard (response as? HTTPURLResponse)?.statusCode == 200,
-                      let json = try JSONSerialization.jsonObject(with: data) as? [String: String],
-                      let value = json["url"], var parts = URLComponents(string: value),
-                      parts.scheme == "wss", parts.host == "api.cartesia.ai",
-                      parts.user == nil, parts.password == nil, let access = json["token"] else {
+                      let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let value = json["url"] as? String, var parts = URLComponents(string: value),
+                      parts.scheme == "wss", ["api.cartesia.ai", "api-us.cartesia.ai"].contains(parts.host ?? ""),
+                      parts.port == nil || parts.port == 443,
+                      parts.user == nil, parts.password == nil, let access = json["token"] as? String else {
                     throw URLError(.badServerResponse)
                 }
                 parts.queryItems = [URLQueryItem(name: "cartesia_version", value: "2026-08-14"),
@@ -79,11 +81,11 @@ final class CartesiaConversation: ObservableObject {
                     do { try await Task.sleep(nanoseconds: 12_000_000_000) }
                     catch { return }
                     guard let self, self.generation == token, !self.ready else { return }
-                    self.fail("Voice connection timed out. Use the check's offline explanation.")
+                    self.fail("Voice connection timed out.")
                 }
             } catch {
                 guard let self, self.generation == token else { return }
-                self.fail("Voice questions unavailable. Check gateway and published Cartesia agent configuration.")
+                self.fail("Cartesia could not connect. Check voice setup.")
             }
         }
     }
@@ -99,10 +101,10 @@ final class CartesiaConversation: ObservableObject {
         socket?.cancel(with: .normalClosure, reason: nil); socket = nil
         engine.stop(); player.stop()
         if tapInstalled { engine.inputNode.removeTap(onBus: 0); tapInstalled = false }
-        status = "Voice questions stopped; routine state unchanged"
+        status = "Voice stopped"
     }
 
-    private func fail(_ message: String) { stop(); status = message }
+    private func fail(_ message: String) { stop(); status = message; onFailure?(message) }
 
     private func receive(token: UUID) {
         guard let socket else { return }
@@ -122,7 +124,7 @@ final class CartesiaConversation: ObservableObject {
                 }
             } catch {
                 guard let self, self.generation == token else { return }
-                self.fail("Voice connection ended. Routine state unchanged; offline help is available.")
+                self.fail("Voice connection ended.")
             }
         }
     }
@@ -138,7 +140,7 @@ final class CartesiaConversation: ObservableObject {
                 completion?()
             } catch {
                 guard let self, self.generation == token else { return }
-                self.fail("Voice network is unavailable. Return to the check controls.")
+                self.fail("Voice network is unavailable.")
             }
         }
     }
@@ -147,26 +149,36 @@ final class CartesiaConversation: ObservableObject {
         switch event["type"] as? String {
         case "session_ready":
             timeout?.cancel(); timeout = nil
-            do { try startAudio(); ready = true; status = "Voice Q&A live · microphone sent to Cartesia" }
-            catch { fail("Audio could not start. End voice Q&A and use offline help.") }
+            do { try startAudio(); ready = true; status = "Listening"; onReady?() }
+            catch { fail("Microphone or speaker could not start.") }
         case "audio_output":
             guard let string = event["audio"] as? String, let data = Data(base64Encoded: string) else { return }
+            status = "Speaking"
             play(data)
         case "audio_output_clear":
             playbackGeneration = UUID(); queuedSamples = 0
             player.stop(); player.play()
         case "turn_ended":
-            // Transcript display only. This text never reaches RoutineSession or VoiceIntent.
-            let turn = event["turn"] as? [String: Any] ?? event
-            if let text = turn["text"] as? String {
+            if let text = event["text"] as? String {
                 transcript = String((transcript + "\n" + text).suffix(4000))
+                if event["role"] as? String == "user", let turn = event["turn"] as? Int {
+                    onUserUtterance?(text, turn)
+                } else if event["role"] as? String == "assistant" { lastReply = text }
             }
         case "client_tool_call":
             if event["expects_response"] as? Bool == true, let id = event["tool_call_id"] as? String {
+                let result: (String, Bool)
+                if let saved = toolResults[id] { result = saved }
+                else if let name = event["tool_name"] as? String, let parameters = event["parameters"] as? [String: Any] {
+                    result = onTool?(name, parameters) ?? ("Routine unavailable", true)
+                    // A bounded cache makes replayed tool IDs idempotent.
+                    if toolResults.count >= 128 { toolResults.removeAll() }
+                    toolResults[id] = result
+                } else { result = ("Invalid tool request", true) }
                 send(["type": "client_tool_result", "tool_call_id": id,
-                      "result": "This practice assistant has no app-control tools. Ask the user to return to the check controls.", "is_error": true])
+                      "result": result.0, "is_error": result.1])
             }
-        case "error": fail("Cartesia reported an error. Offline help remains available.")
+        case "error": fail("Cartesia reported an error.")
         default: break
         }
     }
@@ -200,7 +212,7 @@ final class CartesiaConversation: ObservableObject {
             DispatchQueue.main.async {
                 defer { gate.release() }
                 guard let self, self.generation == token, self.ready else { return }
-                if gate.overflowed { self.fail("Voice audio fell behind. Reconnect Q&A; monitoring remains local."); return }
+                if gate.overflowed { self.fail("Voice audio fell behind."); return }
                 // Fixed 40 ms chunks; converter callbacks may be any length.
                 self.microphoneRemainder.append(data)
                 while self.microphoneRemainder.count >= 1280, self.active {
@@ -216,7 +228,7 @@ final class CartesiaConversation: ObservableObject {
     }
 
     private func enqueue(_ data: Data) {
-        guard pending.count < 5 else { fail("Voice upload fell behind. Reconnect Q&A."); return }
+        guard pending.count < 5 else { fail("Voice connection fell behind."); return }
         pending.append(data)
         flush()
     }
@@ -234,7 +246,7 @@ final class CartesiaConversation: ObservableObject {
         guard queuedSamples + count <= 16_000 * 6,
               let buffer = AVAudioPCMBuffer(pcmFormat: playback, frameCapacity: AVAudioFrameCount(count)),
               let channel = buffer.floatChannelData?[0] else {
-            fail("Voice playback fell behind. Reconnect Q&A."); return
+            fail("Voice playback fell behind."); return
         }
         buffer.frameLength = AVAudioFrameCount(count)
         data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) in
@@ -249,6 +261,7 @@ final class CartesiaConversation: ObservableObject {
             DispatchQueue.main.async {
                 guard let self, self.playbackGeneration == token else { return }
                 self.queuedSamples = max(0, self.queuedSamples - count)
+                if self.queuedSamples == 0 { self.status = "Listening" }
             }
         }
         if !player.isPlaying { player.play() }

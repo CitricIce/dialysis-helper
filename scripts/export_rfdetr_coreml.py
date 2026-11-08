@@ -8,7 +8,7 @@ Run on your Mac (Core ML predictions only work on macOS):
     python3 -m venv .venv && source .venv/bin/activate
     pip install "rfdetr[coreml]" roboflow pillow numpy
     export ROBOFLOW_API_KEY=your_key
-    python3 scripts/export_rfdetr_coreml.py --image path/to/test_photo.jpg
+    python3 scripts/export_rfdetr_coreml.py --background-class-id 0 --classes "Hand,Sterile_connector_tip" --image path/to/test_photo.jpg
 
 If the download step fails, click "Download Weights" on the model page in Roboflow and pass
 the file with --weights path/to/weights.pt instead.
@@ -35,14 +35,13 @@ THRESHOLD = 0.45  # same as CONFIDENCE_THRESH in the app
 
 
 def app_kind(name):
-    """Mirror of CoachVisionPipeline.classify(_:) so you can see how the app will treat each class."""
     n = name.lower().replace(" ", "_").replace("-", "_")
-    if "finger" in n or "thumb" in n:
+    if n in {"fingertip", "thumb_tip", "index_tip", "middle_tip", "ring_tip", "little_tip"}:
         return "fingertip"
-    if any(w in n for w in ("sterile", "catheter", "connector", "tip")) or n in ("cap_interior", "connector_opening"):
-        return "STERILE SURFACE"
-    if "hand" in n or n in ("glove", "gloved_hand"):
-        return "HAND"
+    if n in {"sterile_tip", "sterile_connector_tip", "catheter_tip", "cap_interior", "connector_opening"}:
+        return "protectedOpening"
+    if n in {"hand", "hands", "glove", "gloved_hand"}:
+        return "hand"
     return "ignored"
 
 
@@ -60,7 +59,9 @@ def download_weights(args, dest):
     models = version.models()
     ids = [str(getattr(m, "id", m)) for m in models]
     print("Models in this version:", ids)
-    chosen = next((m for m, i in zip(models, ids) if args.model_hint in i), models[0])
+    chosen = next((m for m, i in zip(models, ids) if args.model_hint in i), None)
+    if chosen is None:
+        sys.exit("No matching model. Use the correct --model-hint or pass --weights.")
     cwd = os.getcwd()
     os.chdir(dest)
     try:
@@ -82,26 +83,43 @@ def resolve_classes(args, weights, model):
     ck_args = checkpoint.get("args")
     stored = ck_args.get("class_names") if isinstance(ck_args, dict) else getattr(ck_args, "class_names", None)
     print(f"Checkpoint class slots: {head}; stored class names: {stored}")
-    placeholder = "_roboflow_placeholder"  # id 0 in Roboflow COCO exports; must not match 'tip'/'hand'
-    if args.classes:
-        names = [n.strip() for n in args.classes.split(",") if n.strip()]
-    elif stored:
-        names = list(stored)
-    elif args.api_key:
-        from roboflow import Roboflow
-        project = Roboflow(api_key=args.api_key).workspace(args.workspace).project(args.project)
-        names = sorted(project.classes.keys())  # Roboflow numbers categories alphabetically after id 0
-        print("Class names from Roboflow project (alphabetical):", names)
+    if args.background_class_id is None:
+        sys.exit("Specify --background-class-id from the training layout (0 for this project's reserved slot, -1 for final slot, or none).")
+    background = None
+    if args.background_class_id != "none":
+        index = int(args.background_class_id)
+        if not -head <= index < head:
+            sys.exit("Background class must index one of the checkpoint's slots.")
+        background = index % head
+    if args.class_map:
+        document = json.loads(Path(args.class_map).read_text())
+        if "categories" in document:
+            mapping = {int(category["id"]): category["name"] for category in document["categories"]}
+        else:
+            mapping = {int(key): value for key, value in document.items()}
     else:
-        sys.exit("The checkpoint has no class names. Re-run with --classes 'name1,name2' "
-                 "(the names shown in your Roboflow project, alphabetical).")
-    if len(names) == head - 1:
-        mapping = {0: placeholder, **{i + 1: n for i, n in enumerate(names)}}
-    elif len(names) == head:
-        mapping = dict(enumerate(names))
-    else:
-        sys.exit(f"{len(names)} class names given but the model has {head} class slots.")
-    return {str(k): str(v) for k, v in mapping.items()}
+        if args.classes:
+            names = [n.strip() for n in args.classes.split(",") if n.strip()]
+        elif stored:
+            if isinstance(stored, dict):
+                mapping = {int(key): value for key, value in stored.items()}
+                names = None
+            else:
+                names = list(stored)
+        else:
+            sys.exit("The checkpoint has no class IDs/names. Supply --class-map from the training COCO categories, or --classes in actual class-ID order. Project names must not be alphabetically guessed.")
+        if names is not None:
+            slots = [index for index in range(head) if index != background]
+            if len(names) == head:
+                mapping = dict(enumerate(names))
+            elif len(names) == len(slots):
+                mapping = dict(zip(slots, names))
+            else:
+                sys.exit("Class count does not match the checkpoint's foreground slots.")
+    if not mapping or any(index < 0 or index >= head or not isinstance(name, str) or not name for index, name in mapping.items()):
+        sys.exit("Invalid class-ID map.")
+    args.resolved_background = background
+    return {str(key): value for key, value in mapping.items()}
 
 
 def main():
@@ -116,6 +134,8 @@ def main():
     parser.add_argument("--out", default=str(DEFAULT_OUT))
     parser.add_argument("--classes", help="comma-separated class names for ids 1..N, e.g. 'hand,tip' "
                         "(Roboflow reserves id 0). Needed when the checkpoint stores no names.")
+    parser.add_argument("--class-map", help="JSON index-to-name map, or training COCO annotations with categories")
+    parser.add_argument("--background-class-id", help="Exact training background/reserved slot: integer, -1 for final, or none")
     parser.add_argument("--fp32", action="store_true", help="export float32 (bigger, no Neural Engine)")
     args = parser.parse_args()
 
@@ -137,9 +157,9 @@ def main():
     for k, v in sorted(classes.items(), key=lambda kv: int(kv[0])):
         print(f"  {k:>2}  {v:<30} -> {app_kind(v)}")
     kinds = {app_kind(v) for v in classes.values()}
-    if "STERILE SURFACE" not in kinds:
+    if "protectedOpening" not in kinds:
         print("WARNING: no class looks like a sterile tip. Edit classify(_:) in CoachVisionPipeline.swift.")
-    if "HAND" not in kinds and "fingertip" not in kinds:
+    if "hand" not in kinds and "fingertip" not in kinds:
         print("NOTE: no hand class; the app will use Apple's built-in fingertip tracking only.")
 
     exported = model.export(format="coreml", coreml_precision="float32" if args.fp32 else "float16",
@@ -162,6 +182,10 @@ def main():
     meta["dets_output"] = outputs[0]
     meta["labels_output"] = outputs[1]
     meta["resolution"] = str(resolution)
+    meta["armguard_box_format"] = "normalized_cxcywh"
+    meta["armguard_score_encoding"] = "logits"
+    meta["armguard_background_class_id"] = str(args.resolved_background) if args.resolved_background is not None else "none"
+    meta["armguard_roles"] = json.dumps({value: app_kind(value) for value in classes.values()})
     ml.short_description = "RF-DETR Small: d-s-workspace/dialysis-connector-tip-safety-1-rfdetr-small-t1"
     out = Path(args.out)
     if out.exists():
@@ -188,9 +212,9 @@ def main():
     dets = np.asarray(prediction[outputs[0]], dtype=np.float32).reshape(-1, 4)
     labels = np.asarray(prediction[outputs[1]], dtype=np.float32)
     labels = labels.reshape(-1, labels.shape[-1])
-    scores = 1 / (1 + np.exp(-labels)) if (labels.min() < 0 or labels.max() > 1) else labels
-    if dets.max() > 1.5:
-        dets = dets / resolution
+    scores = 1 / (1 + np.exp(-np.clip(labels, -88, 88)))
+    if args.resolved_background is not None:
+        scores[:, args.resolved_background] = -np.inf
     print("\nApp decoding (Core ML package):")
     for q in np.argsort(-scores.max(axis=1)):
         score = scores[q].max()
@@ -200,7 +224,7 @@ def main():
         box = [(cx - w / 2) * width, (cy - h / 2) * height, (cx + w / 2) * width, (cy + h / 2) * height]
         print(f"  {classes.get(str(int(scores[q].argmax())), scores[q].argmax()):<28} {score:.2f}  {np.round(box).astype(int).tolist()}")
     print("\nThe two lists should show the same classes and roughly the same boxes.")
-    print("If class names are shifted by one, tell Claude: the class-index mapping needs an offset.")
+    print("Class IDs must match training annotations; do not correct offsets by guessing.")
 
 
 if __name__ == "__main__":

@@ -3,10 +3,10 @@
 Status: prototype source updated November 7, 2026. The
 [native iPhone app](ios/ArmGuardCaptureProbe/README.md) now has practice routines,
 hand tracking, OCR, a Core ML detector adapter, BLE and voice integrations.
-Monitoring requires a trained protected-part model, which is not included.
+The teammate's RF-DETR Small model is now bundled; real-photo accuracy and iPhone latency remain unverified.
 The firmware has legacy and PWM-v2 interfaces. Portable logic and mocked gateway
-checks run here; full Xcode, iOS compilation, live Cartesia and hardware validation
-remain outstanding. The earlier Mac application remains unimplemented.
+checks run here; live Cartesia creation, speech, streaming and a synthetic tool loop
+have passed. Full Xcode, iPhone compilation and hardware validation remain outstanding. The earlier Mac application remains unimplemented.
 
 The updated [ArmGuard PD product design](<ArmGuard PD Real-Time Sterile Technique Coaching for Home Peritoneal Dialysis.md>)
 sets the product direction. The current preferred implementation runs capture,
@@ -18,9 +18,9 @@ implementation. [README.md](README.md) documents existing firmware and wiring.
 ## Current iteration: routines and dynamic voice
 
 This section supersedes the marker-first and prerecorded-only choices in the
-earlier native-stack table below. The user now prefers Roboflow/YOLOv8 protected
-surface detection, optionally custom hand/fingertip labels, with Apple hand tracking
-as fallback. The existing ARKit capture path remains in use. ArUco is an alternative
+earlier native-stack table below. The bundled implementation uses Roboflow RF-DETR Small for protected connector
+tips and whole-hand boxes, with Apple Vision supplying fingertips. Custom
+fingertip labels and a Vision/NMS YOLO export remain supported alternatives. The existing ARKit capture path remains in use. ArUco is an alternative
 for a constrained prop demo, not a required dependency of this iteration.
 
 | Component | Implemented direction | Limits / configuration |
@@ -28,12 +28,12 @@ for a constrained prop demo, not a required dependency of this iteration.
 | Routine engine | Versioned JSON checks, practice slots, self-reports, selective read-back + confirmation, pause/rearm/review states | Four slot names are examples, not a prescribed daily schedule; no fluid prescription or clinic protocol configured |
 | Capture | Rear RGB + sceneDepth from the same ARFrame; portrait only | iPhone 15 Pro target; depth at small edges still needs validation |
 | Hands | Custom fingertip boxes when present; Apple Vision adds missing candidates and supplies fallback | Whole-hand centroids cannot substitute for nearest fingers. Two hands with all five confident Apple tips each are a conservative arming/clearance gate |
-| Protected objects | Optional `SterileParts.mlmodelc` via Vision/Core ML | Exact exposed-surface labels, NMS object outputs; no trained model supplied and no fabricated detections |
+| Protected objects | Bundled RF-DETR Small Core ML export, 512px/300 queries | Exact class mapping: reserved 0, Hand 1, Sterile_connector_tip 2; raw tensor adapter with explicit logits/box/output metadata. Cap interiors, clothing and floor hazards are not modeled |
 | Proximity | Fingertip-to-nearest-projected-region boundary, then depth unprojection | Experimental point-to-box-boundary estimate, not a true 3D surface minimum or physical-contact measurement |
 | Wristband | CoreBluetooth; legacy patterns or PWM-v2 duty | Matching firmware required. One connected band, no left/right routing yet |
-| Immediate warnings | Local AVSpeechSynthesizer, BLE and display | No cloud round trip in hazard path; voice repetition limited to once per five seconds |
-| Routine speech | Local speech by default; optional gateway Cartesia TTS | Generated per prompt; not fixed clips. Eight-second network timeout then local fallback |
-| Questions | Opt-in streaming Cartesia Managed Agent through server-created session | Needs configured agent/voice/API access; generated explanations are not clinically verified. No app-state tools; remote transcripts never enter the routine engine |
+| Immediate warnings | Local band/display plus preloaded Cartesia clips; phone speech fallback | No cloud round trip in hazard path; voice repetition limited to once per five seconds |
+| Routine speech | One continuous Cartesia Managed Agent conversation; explicit phone-voice option | Setup before hand preparation. Questions, interruptions and check replies share the call; live behavior still needs testing |
+| Native app controls | Two narrowly scoped client tools: get state, respond to current check | A reply must match the latest unused user transcript and current check. Native gates enforce readiness and review; generated explanations remain unvalidated |
 | Other visual support | One-shot Apple text recognition for visible bag labels | Suggestions only; no automatic prescription match, color-based strength inference or automatic check completion |
 | Events | Local timestamp/type/evidence JSON; export by user | No audio, images, free-text read-backs or automatic nurse upload. No cleanliness score |
 
@@ -41,19 +41,19 @@ for a constrained prop demo, not a required dependency of this iteration.
 
 Use one short action at a time, ask for a concrete action report, and use read-back
 at consequential decision points such as supply selection and protected surfaces.
-Offer Explain, Repeat, Pause and questions without shaming the user. Phrase
+Offer spoken help, repeat, pause and questions without shaming the user. Phrase
 teach-back as checking the explanation, rather than testing the patient. This is
 consistent with [AHRQ teach-back guidance](https://www.ahrq.gov/health-literacy/improve/precautions/tool5.html).
 A specific PD voice-agent flow has not been established as the single most
 psychologically effective design, and no interaction can force attention or prove
-an action was performed. The current response-length/uncertainty rules are simple
+an action was performed. The current completion-phrase/uncertainty rules are simple
 interaction gates, not semantic or clinical verification.
 
 Avoid a string of yes/no prompts, mandatory long quizzes, arbitrary repeated
-confirmations and rewards for speed. The practice engine rejects bare yes/done,
-common uncertainty phrases and common question forms. Questions use their own
-mode and leave the current check open. Supply/protected-surface read-backs require
-an additional exact confirmation; they are still self-reported. Test this design
+confirmations and rewards for speed. Short done/ready replies are accepted as self-reports for ordinary action steps.
+Questions and common uncertainty/future-action phrases keep the step open.
+Questions stay in the same conversation. Bag/protected-opening read-backs require
+details and a separate spoken confirmation; they remain self-reported. Test this design
 against yes/no prompts on props: measure omissions, recall after interruptions,
 false completion, response time, requests for help, warning frequency and perceived
 burden. Include PD nurses and intended users before choosing the final flow.
@@ -69,7 +69,32 @@ washing” or “bar soap is wrong” into universal rules. For example, one
 includes later hand disinfection and permits positioning the drain bag on the
 floor. Protect exposed openings; a floor rule for every bag or tube would be wrong.
 The phone view also cannot verify that the room's fan/AC is off, hands are clean,
-or a mask is worn. No such visual check is claimed.
+or a mask is worn. No such visual check is claimed. The incoming image-scale warning loop has been disabled as an alert source: its 10 mm reference size was a placeholder. Millimetre estimates require actual calibration; active warnings continue through the armed LiDAR path.
+
+### Hands-free voice setup and recovery
+
+The main screen has a single start action and the current spoken step; setup and
+camera/depth diagnostics live in the gear menu. Direct phone-to-Cartesia access is the default. A test user enters an authorized
+API key once; it persists in the device Keychain, with nonsecret voice/agent IDs
+in preferences. No key is embedded in the app and no laptop process is required.
+Internet is required for conversation. A hosted credential gateway remains an
+optional architecture for shared app distribution. An authorized key can create a dedicated
+agent and its tools through `setup_agent.py`; the account owner's login is not
+needed for the integration. Billing and API permissions remain account dependencies.
+See [voice setup](services/voice_gateway/README.md).
+
+Microphone audio streams to Cartesia only after explicit consent. User transcripts
+can reach native routine controls through the two client tools; assistant speech
+cannot. One actual user turn may be consumed once for the matching current check.
+The agent cannot clear review flags or alter prescriptions. The camera and band
+run locally. Immediate alerts interrupt the cloud call and play cached Cartesia
+audio, falling back to phone speech if needed. On finishing that cue, the app opens
+a fresh conversation with the current native phase. Cloud failures use phone
+speech/on-device recognition. Backgrounding stops voice and pauses monitoring;
+resuming voice on return is explicit, and monitoring needs fresh rearming.
+The source is implemented and type-checked; live agent creation, speech, streaming and a synthetic reply/tool exchange have passed.
+Naturalness, phone microphone audio, turn timing, interruptions and physical alert
+latency still need phone tests.
 
 ### Other checks and useful haptics
 
@@ -106,16 +131,29 @@ ignored for fine proximity. Custom fingertip candidates are merged with confiden
 Apple tips so a single custom detection cannot hide missing fingers. Unknown
 protected objects have no Apple fallback: lack of detections is unavailable.
 
-Train/export the chosen YOLOv8 variant in your Roboflow/Ultralytics workflow, check
-Core ML export availability for that model/account, and export with NMS so Vision
-returns `VNRecognizedObjectObservation`. Add the model to the Xcode app target and
-name it `SterileParts` (Xcode compiles it to `.mlmodelc`). See the
-[official Core ML export guide](https://docs.ultralytics.com/integrations/coreml/).
-Validate the exact export, input preprocessing, class names, orientation and boxes
-on device. Training and conversion are not implemented by the adapter. Split
-validation by recording/session and include occlusion, sleeves, skin tones,
-lighting, clutter, rotation, capped vs exposed parts and negative examples.
-Measure protected-surface recall and fingertip localization, not only mAP.
+The current artifact is `SterileParts.mlpackage`: RF-DETR Small, 512 px, 300
+queries, reserved slot 0, Hand 1 and Sterile_connector_tip 2. It is already in the
+Xcode Sources phase. `RFDETRDetector.swift` validates NCHW/tensor metadata, applies
+sigmoid to raw logits, excludes the reserved slot and clips off-frame boxes.
+Output names are explicit; they are not inferred from tensor shape. The learned
+weights match the teammate's commit exactly. Class-role matching is explicit,
+so an arbitrary catheter-body or ambiguous tip label is not silently protected.
+
+`scripts/export_rfdetr_coreml.py` now requires the training background slot and
+actual class-ID order/map instead of guessing names alphabetically. For the
+bundled project use `--classes 'Hand,Sterile_connector_tip' --background-class-id 0`.
+A future Vision/NMS image-input export can use the separate Vision adapter.
+See [RF-DETR's export contract](https://rfdetr.roboflow.com/latest/exports/onnx/)
+and [native Core ML export](https://github.com/roboflow/rf-detr/blob/develop/docs/exports/coreml.md).
+
+The Mac smoke test passed model compilation/loading, RGB/portrait orientation,
+normalization, input reuse and actual inference/decoding. Warm Mac CPU processing
+on a generated pattern was 187.4 ms; this is not iPhone or end-to-end latency.
+Real-photo parity and detection accuracy remain unverified. Split evaluation by
+recording/session and include occlusion, sleeves, skin tones, lighting, clutter,
+rotation, capped versus exposed parts and negative examples. Measure protected-
+surface recall and fingertip localization, not only mAP. The current model has no
+cap-interior class; the wider labels above describe future annotation scope.
 
 ### Experimental timing and failure behavior
 
@@ -148,13 +186,15 @@ not a result. PWM-v2 host commands expire after 250 ms; firmware receives a 100 
 heartbeat and shuts off after 300 ms without one. Lost observation is a distinct
 pause message; silence never proves clearance.
 
-Dynamic Q&A uses streaming audio and can be interrupted. The current UI permits
-starting it only in checking/paused phases, so conversation cannot distract from
-an actively monitored connection. It cannot advance checks or clear review flags.
-Cloud speech may fail; offline Explain and local warning speech remain available.
-See [gateway setup](services/voice_gateway/README.md). No real API calls or model
-inferences have been verified here, and prompts alone cannot guarantee safe LLM
-answers. Clinical content and agent behavior require review before patient use.
+One opted-in Cartesia conversation handles check replies and questions, including
+during armed monitoring. Native tools consume only matching unused user replies;
+they cannot clear review flags. Urgent local alerts interrupt the call and the app
+reconnects with current state after the cue. Direct phone access is default, with
+the user-entered provider key in Keychain; the optional hosted gateway is not a
+laptop requirement. Direct native speech/session/WSS tests have passed with the
+local gateway stopped. Phone microphone, echo, interruption and recovery behavior
+still need hardware tests. Prompts alone cannot guarantee clinical correctness.
+See [phone setup](ios/ArmGuardCaptureProbe/README.md#enable-conversational-cartesia-voice-without-a-laptop).
 
 ## Scope and reconciliation
 
@@ -169,7 +209,8 @@ Current work focuses on the first program. Its central rule is **protect an
 exposed sterile surface from an inappropriate collision**, whether the hand or
 connector is moving. Entering a tray zone is supporting evidence, not proof of an
 exchange step or contamination. The table records the earlier Mac design
-reconciliation; see the native implementation decision immediately below it.
+reconciliation before the current native/model integration. Its decision column
+is historical; the Current iteration section is the implemented design.
 
 | Topic | Earlier DESIGN / README | Updated product design | Implementation decision |
 | --- | --- | --- | --- |
@@ -191,14 +232,12 @@ clean exchange.
 
 ## Preferred implementation: native iPhone, no live computer link
 
-The first capture milestone is now in `ios/ArmGuardCaptureProbe/`: an ARKit
-scene-depth test with live RGB, a depth visualization and diagnostics. No markers,
-inference model or band are needed for this milestone. It uses ARKit's paired
-camera/depth frames rather than the proposed direct AVFoundation pipeline below;
-the eventual app can compare the two after hardware capture is established.
+The implementation in `ios/ArmGuardCaptureProbe/` now includes the ARKit capture
+test, paired RGB/depth, bundled RF-DETR, Apple fingertips, routines, direct voice
+and band output. The standalone capture test remains in Developer tools. The
+AVFoundation and marker options below are alternatives, not required next steps.
 
-The user proposes building the app and running inference locally. Adopt this
-direction for the next implementation, targeting an iPhone 15 Pro if available.
+The current app runs inference locally and targets the iPhone 15 Pro setup.
 Its rear LiDAR/main-camera combination is a capture candidate, not evidence of
 contact-detection accuracy. The standard iPhone 16 can separately test front
 TrueDepth; do not silently substitute RGB-only operation for validated depth.
@@ -217,16 +256,16 @@ This removes RGB/depth encoding, transport and host decoding from the live loop.
 It does not establish a latency result: measure phone inference, depth validity,
 BLE, motor onset and sustained thermal performance on the actual device. No
 Record3D purchase, Apple-hosted inference or live Mac receiver is required for the
-local vision/alert path. Optional dynamic voice uses the gateway described above.
+local vision/alert path. Dynamic voice connects directly to Cartesia by default; a hosted gateway is optional.
 
 | Layer | Native choice | Design consequence |
 | --- | --- | --- |
-| App/UI | Swift + SwiftUI, native camera preview/overlay | One foreground screen with readiness, arm/stop, calibration and manual phase controls |
+| App/UI | Swift + SwiftUI, native camera preview/overlay | One spoken-step screen; voice-driven checks, native readiness/review gates, setup and diagnostics behind a gear menu |
 | Earlier RGB/depth option | AVFoundation video/depth outputs and AVCaptureDataOutputSynchronizer | Process paired frames with timestamps and calibration; begin from Apple's capture sample |
 | Hand model | Vision VNDetectHumanHandPoseRequest, maximumHandCount=2 | Built-in hand-pose detection; no custom training or Python runtime; validate this detector rather than assuming MediaPipe results transfer |
 | Alternative prop markers | ArUco via OpenCV iOS and a thin Objective-C++ bridge | Preserve existing marker IDs and measured prop profiles; native integration is work but requires no model training |
 | Marker simplification, optional | Native Vision QR detection on rigid flags | Alternative if avoiding OpenCV is important; requires different printed tags and validated corner/pose handling, not an ArUco-compatible drop-in |
-| Coordinates/risk | Swift geometry with calibrated depth and marker transforms | Same boundary-clearance, exposure, uncertainty, loss and review semantics as this document |
+| Coordinates/risk | Swift geometry with registered ARKit depth; marker transforms are an alternative | Same boundary-clearance, exposure, uncertainty, loss and review semantics as this document |
 | Band | CoreBluetooth central directly to ESP32 characteristic | Preserve explicit legacy versus intensity-v2 modes, freshness, heartbeat and watchdog contract |
 | Earlier audio option | AVAudioPlayer preloaded clips; AVSpeechSynthesizer fallback | Priority/cooldown worker; speech must not block vision |
 | Log | Small local Codable event records on a background writer | Export summaries later; no dashboard/network dependency for alerts |
@@ -266,8 +305,8 @@ Xcode installation by cable**:
 3. Connect/unlock the phone, trust/pair it with the Mac and select it as the run
    destination. Enable Developer Mode when prompted; this includes a restart and
    confirmation by the phone owner.
-4. Build and run. Grant camera/Bluetooth access. Verify actual capture, marker
-   geometry and the selected BLE protocol before enabling warnings.
+4. Build and run. Grant camera/Bluetooth access. Verify actual capture, model boxes, fingertip/depth
+   registration and the selected BLE protocol before enabling warnings.
 5. Disconnect the development cable and verify standalone operation. Rebuild and
    reinstall when the development provisioning profile expires.
 
@@ -295,18 +334,18 @@ building a streaming protocol but adds native capture, UI and app lifecycle work
 1. Establish a signed empty app on the actual phone, then verify RGB/depth capture.
 2. Add Vision hands and a debug depth display; measure hovering separation and
    invalid depth at the intended working distance before promising contact precision.
-3. Add marker registration and the shared risk state machine; display numeric risk
-   with mock output, including safe grip and loss cases.
+3. Validate the bundled model, fingertip/depth registration and shared risk state
+   machine on actual props, including hovering, grip and observation loss.
 4. Add audio and direct BLE legacy commands; add intensity-v2 only with compatible
    firmware. Verify command expiry, app interruption and reconnect behavior.
 5. Profile sustained operation and record physical warning-to-motor trials. Local
    logs and optional export follow; defer dashboard, clips and automatic step checks.
 
-Suggested native modules: CaptureSession, HandTracker, MarkerTracker,
-DepthRegistration, RiskEngine, BandClient, PromptPlayer, EventStore and a single
-SessionViewModel. Implement pure Swift geometry/state tests and recorded-frame
-replay; real camera/depth/BLE/motor tests need the device. These are proposed
-modules, not files already present in this repository.
+Implemented modules include CaptureController, CoachVisionPipeline, RFDETRDetector,
+CoachViewModel, CoachSpeech, CartesiaConversation and BandClient, with portable
+routine/proximity/protocol logic in Core. Pure Swift checks and the Mac model
+smoke test are available; recorded-frame replay and real camera/depth/BLE/motor
+validation still need further work and the device.
 
 ## First demo and collision coverage
 

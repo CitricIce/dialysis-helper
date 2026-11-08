@@ -12,8 +12,20 @@ final class CoachViewModel: ObservableObject {
     @Published private(set) var observation = CoachVisionSnapshot()
     @Published var selectedSlot = "Exchange 1"
     @Published var response = ""
-    @Published var allowCloudQuestions = false
-    @Published private(set) var message = "Start a practice routine to try the checks."
+    @Published var allowCloudQuestions = UserDefaults.standard.bool(forKey: "cloudVoiceConsent") {
+        didSet {
+            UserDefaults.standard.set(allowCloudQuestions, forKey: "cloudVoiceConsent")
+            if !allowCloudQuestions {
+                conversation.stop(); resumeCloudAfterCue = false
+                if voiceEnabled { speech.stop(); speech.listen() }
+            }
+        }
+    }
+    @Published private(set) var voiceEnabled = false
+    @Published private(set) var ended = false
+    private var replyGate = SpokenReplyGate()
+    private var resumeCloudAfterCue = false
+    @Published private(set) var message = "Set up your voice, then start when you're ready."
     @Published private(set) var scannedLabel = ""
     @Published private(set) var logURL: URL?
     private var subscriptions: Set<AnyCancellable> = []
@@ -24,7 +36,6 @@ final class CoachViewModel: ObservableObject {
     private let logQueue = DispatchQueue(label: "org.armguard.coach.events", qos: .utility)
     private var runID = UUID()
     private var lastRiskLevel: RiskLevel = .none
-    private var lastRiskSpeech = -Double.infinity
     private let haptics = UINotificationFeedbackGenerator()
 
     init() {
@@ -39,39 +50,51 @@ final class CoachViewModel: ObservableObject {
         speech.onResponse = { [weak self] text in self?.handle(text) }
         speech.canListen = { [weak self] in
             guard let self else { return false }
-            return self.session?.phase == .checking && !self.conversation.active
+            return self.voiceEnabled && self.session?.phase != .idle && !self.conversation.active
+        }
+        speech.onFinished = { [weak self] in
+            guard let self, self.resumeCloudAfterCue, self.voiceEnabled else { return }
+            self.resumeCloudAfterCue = false
+            self.connectVoice()
+        }
+        conversation.onReady = { [weak self] in
+            self?.startCamera()
+            self?.speech.prepareAlertClips()
+        }
+        conversation.onFailure = { [weak self] _ in
+            guard let self, self.voiceEnabled else { return }
+            self.resumeCloudAfterCue = false
+            self.message = "The voice connection dropped. I'm using the phone voice for now. " + self.currentPrompt
+            self.speech.speak(self.message, urgent: true)
+        }
+        conversation.onUserUtterance = { [weak self] text, turn in
+            guard let self else { return }
+            self.replyGate.receive(text, turn: turn)
+            // Stop the band immediately on an explicit pause, without waiting for an LLM tool.
+            if VoiceIntent.parse(text) == .pause { self.pause() }
+        }
+        conversation.onTool = { [weak self] name, parameters in
+            self?.runTool(name, parameters: parameters) ?? ("Routine unavailable", true)
         }
         for publisher in [capture.objectWillChange.eraseToAnyPublisher(), speech.objectWillChange.eraseToAnyPublisher(),
                           band.objectWillChange.eraseToAnyPublisher(), conversation.objectWillChange.eraseToAnyPublisher()] {
             publisher.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         }
-        health = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            self?.driveRiskAlerts()
-            self?.checkHealth()
-        }
+        health = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.checkHealth() }
     }
 
     var fresh: Bool {
         let age = ProcessInfo.processInfo.systemUptime - observation.receipt
         return capture.isRunning && observation.receipt > 0 && age >= 0 && age <= 0.25
     }
-    /// MEDIUM/HIGH warning from the scale-reference (SPINOSAURUS) method.
-    /// Holds for up to 0.5 s between vision results; drops to none if the camera stalls.
-    var riskLevel: RiskLevel {
-        let age = ProcessInfo.processInfo.systemUptime - observation.receipt
-        guard capture.isRunning, observation.receipt > 0, age >= 0, age <= 0.5 else { return .none }
-        return observation.scaleRisk
-    }
-    var scaleText: String {
-        let scale = observation.mmPerPixel.map { String(format: "%.3f mm/px", $0) } ?? "NA"
-        let distance = observation.distanceMM.map { String(format: "%.0f mm", $0) } ?? "NA"
-        return "scale=\(scale)  dist=\(distance)  hands=\(observation.fingertips.count) tips / \(observation.hands.count) boxes  sterile=\(observation.regions.count)"
-    }
     var canArm: Bool {
         guard fresh, observation.modelInstalled, observation.handCoverageComplete,
               session?.phase == .checking, session?.currentCheck?.responseKind == .monitoring else { return false }
         if case .clear = observation.decision { return true }
         return false // Start with a clear view and a gap outside the experimental warning band.
+    }
+    var riskLevel: RiskLevel {
+        ProximityFeedback.level(phase: session?.phase, fresh: fresh, decision: observation.decision)
     }
     var riskText: String {
         guard fresh else { return "Observation unavailable or older than 250 ms" }
@@ -89,6 +112,7 @@ final class CoachViewModel: ObservableObject {
         Check: \(session?.currentCheck?.id ?? "none")
         Model: \(observation.modelStatus)
         Hands: \(observation.provider); complete two-hand coverage: \(observation.handCoverageComplete)
+        Detections: \(observation.regions.count) openings; \(observation.hands.count) hand boxes; \(observation.fingertips.count) fingertips
         Last pipeline processing: \(String(format: "%.1f", observation.processingMilliseconds)) ms
         Observation: \(riskText)
         Band: \(band.status)
@@ -96,113 +120,193 @@ final class CoachViewModel: ObservableObject {
         """
     }
 
-    func start() {
+    var voiceConfigured: Bool {
+        allowCloudQuestions && speech.connectionReady
+    }
+    var currentPrompt: String {
+        if session?.reviewRequired == true { return "Pause and follow your dialysis team's instructions about possible contact. I can't confirm contact from this view." }
+        if session?.phase == .paused { return "We're paused. Say resume when you're ready." }
+        if session?.phase == .monitoring { return "I'm watching. Tell me when you've finished, or say pause." }
+        if session?.phase == .preparationOnly { return "Preparation practice is finished. The connection wasn't monitored. Is there anything you'd like to ask?" }
+        return session?.currentCheck?.prompt ?? "We're finished. Is there anything else you'd like to ask?"
+    }
+    var cameraMessage: String {
+        if session?.reviewRequired == true { return "Possible contact needs review" }
+        if !observation.modelInstalled { return "Opening detector has not been added yet" }
+        if session?.phase == .monitoring { return "Camera watching" }
+        return "Camera needs a clear view before watching"
+    }
+    func start(usePhoneVoice: Bool = false) {
         guard session?.phase == .idle else { return }
-        session?.start(); persist(); prompt()
+        guard usePhoneVoice || voiceConfigured else {
+            message = "Open Voice setup to connect Cartesia, or choose Try phone voice."
+            return
+        }
+        ended = false; voiceEnabled = true
+        session?.start(); persist()
+        message = currentPrompt
+        if usePhoneVoice { startCamera(); speech.speak(message, urgent: true) }
+        else { connectVoice() }
+    }
+    func connectVoice() {
+        guard voiceEnabled, voiceConfigured, let session,
+              let request = speech.agentSessionRequest(checkID: session.currentCheck?.id ?? "finished",
+                  phase: session.phase, prompt: currentPrompt, checks: session.template.checks) else { return }
+        speech.stop(); replyGate = SpokenReplyGate()
+        conversation.start(request: request)
     }
     func reset() {
-        pauseHardware()
+        endSession()
         guard let template = session?.template else { return }
         session = try? RoutineSession(template: template)
-        runID = UUID(); logURL = nil; response = ""; scannedLabel = ""
-        message = "New practice only. Reset does not resolve a real contamination concern."
+        runID = UUID(); logURL = nil; response = ""; scannedLabel = ""; ended = false
+        message = "Start when you're ready for another practice."
     }
-    func startCamera() {
-        vision.setActive(true)
-        capture.start()
-    }
+    func startCamera() { vision.setActive(true); capture.start() }
     func scanLabel() {
-        guard capture.isRunning, session?.phase == .checking else { return }
+        guard capture.isRunning, session?.phase == .checking else {
+            say("The camera needs to be running before I can read a label."); return
+        }
         vision.requestLabelRead()
-        message = "Reading visible text only. Inspect it yourself; no prescription comparison is configured."
+        say("Hold the label in view. I'll read the visible text; compare it with your written instructions.")
     }
-    func submit() { let text = response; response = ""; handle(text) }
+    func submit() { let text = response; response = ""; conversation.stop(); handle(text) }
     func handle(_ text: String) {
-        guard !conversation.active else { return }
+        guard voiceEnabled, !ended else { return }
         switch VoiceIntent.parse(text) {
         case .pause: pause()
+        case .resume:
+            if session?.phase == .paused { resume() }
+            else if session?.currentCheck?.responseKind == .monitoring { arm() }
+            else { say(currentPrompt) }
+        case .endSession: endSession()
         case .help: explain()
         case .askQuestion: askQuestion()
         case .repeatPrompt: prompt()
         case .confirm: confirm()
         case .arm: arm()
+        case .skipCamera:
+            if session?.continueWithoutCamera() == true {
+                band.stop(); persist(); say("We'll continue this practice without camera monitoring. " + currentPrompt)
+            } else { say(currentPrompt) }
+        case .readLabel: scanLabel()
         case .finishPreparation: finishPreparation()
         case .finishMonitoring: finishMonitoring()
         case .answer(let answer):
-            guard session?.phase == .checking else { return }
-            message = session?.submit(answer) ?? "Routine unavailable"
-            persist(); speech.speak(message)
+            if session?.phase == .paused {
+                if VoiceIntent.isAffirmative(answer) { resume() }
+                else { say(currentPrompt) }
+            } else if session?.phase == .monitoring {
+                if VoiceIntent.isAffirmative(answer) { finishMonitoring() }
+                else { say(currentPrompt) }
+            } else if session?.phase == .checking, session?.currentCheck?.responseKind == .monitoring {
+                if VoiceIntent.isAffirmative(answer) { arm() }
+                else { say(currentPrompt) }
+            } else if session?.phase == .checking {
+                let reply = session?.submit(answer) ?? "Routine unavailable"
+                persist(); say(reply)
+            } else { say(currentPrompt) }
         }
+    }
+    private func stateResult(error: String? = nil) -> (String, Bool) {
+        var state: [String: Any] = [
+            "phase": session?.phase.rawValue ?? "unavailable",
+            "check_id": session?.currentCheck?.id ?? "finished",
+            "reply": message, "prompt": currentPrompt,
+            "help": session?.currentCheck?.help ?? "Follow your dialysis team's written instructions.",
+            "camera_ready": canArm, "review_required": session?.reviewRequired ?? false,
+            "pending_read_back": session?.pendingReadBack ?? "",
+            "visible_label_text": String(scannedLabel.prefix(800)),
+            "self_report_only": true]
+        if let error { state["error"] = error }
+        let data = (try? JSONSerialization.data(withJSONObject: state)) ?? Data()
+        return (String(data: data, encoding: .utf8) ?? "{}", error != nil)
+    }
+    private func runTool(_ name: String, parameters: [String: Any]) -> (String, Bool) {
+        if name == "get_routine_state" { return stateResult() }
+        guard name == "respond_to_check", let checkID = parameters["check_id"] as? String,
+              let words = parameters["user_words"] as? String,
+              let actual = replyGate.consume(words, expectedCheckID: checkID,
+                                             currentCheckID: session?.currentCheck?.id ?? "finished") else {
+            return stateResult(error: "No matching unused user reply for this step. Read state and ask the user to repeat; do not invent words.")
+        }
+        handle(actual)
+        return stateResult()
+    }
+    private func say(_ text: String, urgent: Bool = false) {
+        message = text
+        if urgent {
+            resumeCloudAfterCue = conversation.active && voiceConfigured && voiceEnabled
+            conversation.stop()
+            speech.speak(text, urgent: true)
+        } else if !conversation.active { speech.speak(text, urgent: true) }
+        // During a call, the tool result carries this reply; avoid a second speaker.
     }
     func confirm() {
         if session?.confirmReadBack() == true { persist(); prompt() }
-        else { message = "First provide a read-back for this check." }
+        else { say("Tell me the details first, then I'll ask you to confirm them.") }
     }
-    func prompt() {
-        conversation.stop()
-        message = session?.currentCheck?.prompt ?? "Practice finished. This record does not verify sterility."
-        speech.speak(message)
-    }
-    func explain() {
-        conversation.stop()
-        message = session?.currentCheck?.help ?? "Use your PD team's instructions. No protocol is configured here."
-        speech.speak(message)
-    }
+    func prompt() { say(currentPrompt) }
+    func explain() { say(session?.currentCheck?.help ?? currentPrompt) }
     func askQuestion() {
-        guard allowCloudQuestions else {
-            message = "Cloud questions are off. Enable them before preparation, or say help for an offline explanation."
-            speech.speak(message, urgent: true)
-            return
-        }
-        guard let check = session?.currentCheck,
-              session?.phase == .checking || session?.phase == .paused,
-              let base = CoachSpeech.allowedGateway(speech.gatewayURL), !speech.gatewayToken.isEmpty else {
-            message = "Configure the voice gateway first. Offline Explain is always available."
-            speech.speak(message, urgent: true)
-            return
-        }
-        speech.stop()
-        conversation.start(base: base, gatewayToken: speech.gatewayToken, checkID: check.id)
+        if conversation.active { return }
+        if voiceConfigured { connectVoice() }
+        else { say("Cartesia isn't connected. " + (session?.currentCheck?.help ?? currentPrompt)) }
     }
     func arm() {
-        conversation.stop(); speech.stop()
-        // Read readiness before opening a mutable access to the @Published
-        // session; canArm also reads session and would otherwise overlap it.
+        guard session?.reviewRequired != true else { say(currentPrompt); return }
         let visionReady = canArm
         guard session?.armMonitoring(visionReady: visionReady) == true else {
-            message = "Cannot arm: need a fresh clear observation, trained model, usable depth and both hands fully tracked."
+            say(observation.modelInstalled
+                ? "I need a clear view of both hands and the opening, with usable depth. Say ready when they're in view."
+                : "The opening detector hasn't been added yet. For this practice, you can say continue without camera, or end session.")
             return
         }
         warningTime = -Double.infinity; lastHazardTime = -Double.infinity; clearSince = nil
-        message = "Experimental monitoring active. Follow your own clinic instructions."
-        persist()
+        persist(); say("I'm watching. Tell me when you've finished.")
     }
     func finishMonitoring() {
-        guard session?.finishMonitoring() == true else { return }
+        guard session?.finishMonitoring() == true else { say(currentPrompt); return }
         band.stop(); persist(); prompt()
     }
     func finishPreparation() {
         guard session?.phase == .checking, session?.currentCheck?.responseKind == .monitoring else { return }
         session?.finishPreparationOnly(); band.stop(); persist()
-        message = "Preparation practice ended. Connection and disconnection were not monitored."
-        speech.stop(); conversation.stop()
+        say("That's the end of preparation practice. The connection wasn't monitored.")
     }
     func pause() {
-        session?.pause(); band.stop(); speech.stop(); conversation.stop(); persist()
-        message = "Paused. Resume explicitly; previous monitoring must be rearmed."
+        session?.pause(); band.stop(); persist()
+        say("We're paused. Take your time. Say resume when you're ready.")
     }
     func resume() {
-        session?.resume(); persist()
-        if session?.reviewRequired == true {
-            message = "Possible overlap still needs review. Follow your PD team's instructions; resume cannot clear this flag."
-            speech.speak(message, urgent: true)
-        } else { prompt() }
+        session?.resume(); startCamera(); persist(); prompt()
+    }
+    func endSession() {
+        voiceEnabled = false; ended = true; resumeCloudAfterCue = false
+        session?.pause(); persist(); pauseHardware()
+        message = "Session ended."
     }
     func backgrounded() {
-        pause(); pauseHardware()
+        session?.pause(); persist(); voiceEnabled = false; resumeCloudAfterCue = false
+        pauseHardware(); message = "Paused. Resume when you're ready."
+    }
+    func foregrounded() {
+        // Permission sheets briefly make the app inactive without ending practice.
+        guard voiceEnabled, !conversation.active, !speech.isListening else { return }
+        speech.listen()
+    }
+    func resumeVoice() {
+        guard session?.phase != .idle, !ended else { return }
+        voiceEnabled = true
+        if voiceConfigured { connectVoice() } else { prompt() }
+    }
+    func usePhoneVoice() {
+        guard !ended else { return }
+        voiceEnabled = true; resumeCloudAfterCue = false
+        conversation.stop(); prompt()
     }
     private func pauseHardware() {
-        vision.setActive(false); capture.stop(reason: "Capture paused. Press Start camera to resume.")
+        vision.setActive(false); capture.stop(reason: "Camera paused")
         band.stop(); speech.stop(); conversation.stop()
     }
     private func checkHealth() {
@@ -210,38 +314,23 @@ final class CoachViewModel: ObservableObject {
         if !fresh { loseObservation("Observation lost or delayed. Pause and restore a clear view before rearming.") }
     }
     private func loseObservation(_ reason: String) {
-        session?.observationLost(); band.stop(); conversation.stop(); persist()
-        message = reason
-        speech.speak(reason, urgent: true)
-    }
-    /// Sends the current warning to the wristband and alerts on the phone.
-    /// BandClient commands expire after 250 ms, so this runs every frame and every 100 ms;
-    /// when the risk clears the band switches itself off.
-    ///   MEDIUM -> legacy 'W' / v2 [1, 160]   (firmware: pulsing)
-    ///   HIGH   -> legacy 'E' / v2 [2, 255]   (firmware: continuous)
-    private func driveRiskAlerts() {
-        let level = riskLevel
-        switch level {
-        case .high: band.set(intensity: 255, suspected: true)
-        case .medium: band.set(intensity: 160)
-        case .none: break
-        }
-        if level != lastRiskLevel { objectWillChange.send() }
-        if level > lastRiskLevel {
-            haptics.notificationOccurred(level == .high ? .error : .warning)
-            let now = ProcessInfo.processInfo.systemUptime
-            if level == .high, now - lastRiskSpeech >= 4 {
-                lastRiskSpeech = now
-                speech.speak("Too close to the sterile tip. Move your hand away.", urgent: true)
-            }
-        }
-        lastRiskLevel = level
+        session?.observationLost(); band.stop(); persist()
+        say(CoachSpeech.viewLostCue, urgent: true)
     }
     private func received(_ output: CoachVisionSnapshot) {
         observation = output
-        // Runs after the monitoring logic below so its band commands cannot cancel a warning.
-        defer { driveRiskAlerts() }
-        if !output.labelText.isEmpty { scannedLabel = output.labelText }
+        let level = riskLevel
+        if level > lastRiskLevel { haptics.notificationOccurred(level == .high ? .error : .warning) }
+        lastRiskLevel = level
+        if !output.labelText.isEmpty, output.labelText != scannedLabel {
+            scannedLabel = output.labelText
+            let labelReply = "The visible label says: " + String(output.labelText.prefix(800)) + ". Compare that with your written instructions."
+            message = labelReply
+            resumeCloudAfterCue = conversation.active && voiceConfigured && voiceEnabled
+            speech.useCartesia = conversation.active
+            conversation.stop()
+            if voiceEnabled { speech.speak(labelReply) }
+        }
         guard session?.phase == .monitoring else { return }
         guard fresh else { loseObservation("Vision is delayed. Monitoring paused; restore the view before rearming."); return }
         let now = ProcessInfo.processInfo.systemUptime
@@ -252,17 +341,15 @@ final class CoachViewModel: ObservableObject {
         switch output.decision {
         case .projectedOverlap:
             session?.flagPossibleContact(); band.set(intensity: 255, suspected: true)
-            conversation.stop(); persist()
-            message = "The hand overlaps a protected opening in the image. Pause and check using your PD team's instructions. This view cannot confirm contact."
-            speech.speak(message, urgent: true)
+            persist()
+            say(CoachSpeech.reviewCue, urgent: true)
         case .unavailable(let reason): loseObservation("Monitoring paused: " + reason)
         case .warning(let intensity, _):
             lastHazardTime = now; clearSince = nil
             band.set(intensity: intensity)
             if now - warningTime >= 5 {
-                warningTime = now; conversation.stop()
-                message = "Your fingers are close to a protected opening. Pause and move your hand away from the opening."
-                speech.speak(message, urgent: true)
+                warningTime = now
+                say(CoachSpeech.nearCue, urgent: true)
             }
         case .clear:
             guard output.handCoverageComplete else { loseObservation("Fingertip coverage lost. Pause and show both hands before rearming."); return }

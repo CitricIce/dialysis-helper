@@ -1,17 +1,37 @@
 import AVFoundation
 import Combine
 import Speech
+import Security
 import UIKit
 
-/// Dynamic Cartesia TTS via a trusted gateway; urgent cues always use local speech.
+enum VoiceConnectionMode: String, CaseIterable { case direct, server }
+
+/// Prototype direct access uses a user-entered Keychain key; hosted access remains optional.
 final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate, AVAudioPlayerDelegate {
-    @Published var gatewayURL = ""
-    @Published var gatewayToken = "" // Session memory only. Never the Cartesia API key.
+    @Published var gatewayURL = UserDefaults.standard.string(forKey: "voiceGatewayURL") ?? "" {
+        didSet { UserDefaults.standard.set(gatewayURL, forKey: "voiceGatewayURL"); invalidateClips() }
+    }
+    @Published var gatewayToken = VoiceAccessCode.read() {
+        didSet { VoiceAccessCode.save(gatewayToken); invalidateClips() }
+    } // A separate gateway access code, never the Cartesia API key.
+    @Published var connectionMode = VoiceConnectionMode(rawValue: UserDefaults.standard.string(forKey: "voiceConnectionMode") ?? "direct") ?? .direct {
+        didSet { UserDefaults.standard.set(connectionMode.rawValue, forKey: "voiceConnectionMode"); invalidateClips() }
+    }
+    @Published var cartesiaAPIKey = VoiceAccessCode.read(account: "cartesia") {
+        didSet { VoiceAccessCode.save(cartesiaAPIKey, account: "cartesia"); invalidateClips() }
+    }
+    @Published var voiceID = UserDefaults.standard.string(forKey: "cartesiaVoiceID") ?? "62ae83ad-4f6a-430b-af41-a9bede9286ca" {
+        didSet { UserDefaults.standard.set(voiceID, forKey: "cartesiaVoiceID"); invalidateClips() }
+    }
+    @Published var agentID = UserDefaults.standard.string(forKey: "cartesiaAgentID") ?? "agent_B7mQ8N5KGeaTvriBekCNKe" {
+        didSet { UserDefaults.standard.set(agentID, forKey: "cartesiaAgentID") }
+    }
     @Published var useCartesia = false
-    @Published var handsFree = false
+    @Published var handsFree = true
     @Published private(set) var status = "Built-in voice ready"
     @Published private(set) var transcript = ""
     @Published private(set) var isListening = false
+    var onFinished: (() -> Void)?
     var onResponse: ((String) -> Void)?
     var canListen: (() -> Bool)?
     private let synthesizer = AVSpeechSynthesizer()
@@ -25,6 +45,63 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
     private var token = UUID()
     private var tapInstalled = false
     private var speaking = false
+    private var clipTask: Task<Void, Never>?
+    private var alertClips: [String: Data] = [:]
+    private var retryTimer: Timer?
+    private var listeningLimit: Timer?
+    private var recognitionFailures = 0
+    static let nearCue = "Your fingers are close to the opening. Pause and move them away."
+    static let reviewCue = "Your hand overlaps the opening in the image. Pause and follow your dialysis team's instructions about possible contact."
+    static let viewLostCue = "I've lost a clear view. We're paused. Restore the view, then say resume."
+
+    private func invalidateClips() {
+        clipTask?.cancel(); clipTask = nil; alertClips.removeAll()
+    }
+    var connectionReady: Bool {
+        if connectionMode == .direct { return !cartesiaAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !voiceID.isEmpty && !agentID.isEmpty }
+        return Self.allowedGateway(gatewayURL) != nil && !gatewayToken.isEmpty
+    }
+    func agentSessionRequest(checkID: String, phase: RoutinePhase, prompt: String, checks: [RoutineCheck]) -> URLRequest? {
+        if connectionMode == .direct {
+            guard let url = Bundle.main.url(forResource: "VoiceInstructions", withExtension: "txt"),
+                  let instructions = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+            return try? CartesiaRequests.agentSession(apiKey: cartesiaAPIKey, voiceID: voiceID, agentID: agentID,
+                instructions: instructions, initialPrompt: prompt, checks: checks, checkID: checkID, phase: phase)
+        }
+        return gatewayRequest(path: "agent-session", body: ["check_id": checkID, "phase": phase.rawValue])
+    }
+    private func gatewayRequest(path: String, body: [String: Any]) -> URLRequest? {
+        guard let base = Self.allowedGateway(gatewayURL), !gatewayToken.isEmpty else { return nil }
+        var request = URLRequest(url: base.appendingPathComponent(path))
+        request.httpMethod = "POST"; request.timeoutInterval = 15
+        request.setValue("Bearer \(gatewayToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        return request
+    }
+    private func speechRequest(_ text: String) -> URLRequest? {
+        if connectionMode == .direct { return try? CartesiaRequests.speech(apiKey: cartesiaAPIKey, voiceID: voiceID, text: text) }
+        return gatewayRequest(path: "speak", body: ["text": text])
+    }
+    func prepareAlertClips() {
+        guard clipTask == nil, connectionReady else { return }
+        let requests = [Self.nearCue, Self.reviewCue, Self.viewLostCue].compactMap { text -> (String, URLRequest)? in
+            guard alertClips[text] == nil, let request = speechRequest(text) else { return nil }
+            return (text, request)
+        }
+        clipTask = Task { @MainActor [weak self] in
+            for (text, request) in requests {
+                guard !Task.isCancelled else { return }
+                do {
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    guard !Task.isCancelled, (response as? HTTPURLResponse)?.statusCode == 200,
+                          (response as? HTTPURLResponse)?.mimeType?.hasPrefix("audio/") == true else { continue }
+                    self?.alertClips[text] = try WaveClip.finalized(data)
+                } catch { if Task.isCancelled { return } }
+            }
+            self?.clipTask = nil
+        }
+    }
 
     override init() { super.init(); synthesizer.delegate = self }
 
@@ -40,14 +117,18 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         stop()
         let current = token
         speaking = true
-        if !urgent, useCartesia, let base = Self.allowedGateway(gatewayURL), !gatewayToken.isEmpty {
+        if urgent, let data = alertClips[text] {
+            do {
+                try configureAudio()
+                player = try AVAudioPlayer(data: data); player?.delegate = self
+                guard player?.play() == true else { throw URLError(.cannotDecodeContentData) }
+                status = "Cartesia voice"
+                return
+            } catch { localSpeech(text, status: "Phone voice fallback"); return }
+        }
+        if !urgent, useCartesia, var urlRequest = speechRequest(text) {
             status = "Generating Cartesia speech…"
-            var urlRequest = URLRequest(url: base.appendingPathComponent("speak"))
-            urlRequest.httpMethod = "POST"
             urlRequest.timeoutInterval = 8
-            urlRequest.setValue("Bearer \(gatewayToken)", forHTTPHeaderField: "Authorization")
-            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            urlRequest.httpBody = try? JSONSerialization.data(withJSONObject: ["text": text])
             networkTask = Task { @MainActor [weak self] in
                 do {
                     let (data, response) = try await URLSession.shared.data(for: urlRequest)
@@ -58,7 +139,7 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
                     guard let self, self.token == current else { return }
                     do {
                         try self.configureAudio()
-                        self.player = try AVAudioPlayer(data: data)
+                        self.player = try AVAudioPlayer(data: WaveClip.finalized(data))
                         self.player?.delegate = self
                         self.player?.prepareToPlay()
                         guard self.player?.play() == true else { throw URLError(.cannotDecodeContentData) }
@@ -98,7 +179,7 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
     }
 
     func listen() {
-        guard !speaking, canListen?() != false else { return }
+        guard handsFree, !speaking, canListen?() != false else { return }
         stopListening()
         token = UUID()
         let permissionToken = token
@@ -152,12 +233,17 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
                         if result.isFinal { self.finishResponse() }
                     } else if error != nil {
                         self.stopListening()
-                        self.status = "Listening stopped; tap Listen or type your response."
+                        self.status = "Reconnecting microphone…"
+                        self.retryListening()
                     }
                 }
             }
             audioEngine.prepare()
             try audioEngine.start()
+            listeningLimit = Timer.scheduledTimer(withTimeInterval: 45, repeats: false) { [weak self] _ in
+                guard let self else { return }
+                self.stopListening(); self.retryListening()
+            }
         } catch {
             stopListening()
             status = "Audio input could not start; type a response instead."
@@ -168,10 +254,23 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         guard isListening else { return }
         let answer = transcript
         stopListening()
+        recognitionFailures = 0
         if !answer.isEmpty { onResponse?(answer) }
+        if !speaking { retryListening() }
     }
 
+    private func retryListening() {
+        guard handsFree, canListen?() != false, !speaking else { return }
+        recognitionFailures = min(recognitionFailures + 1, 5)
+        let retryToken = token
+        retryTimer = Timer.scheduledTimer(withTimeInterval: min(Double(recognitionFailures), 5), repeats: false) { [weak self] _ in
+            guard let self, self.token == retryToken, self.canListen?() != false else { return }
+            self.listen()
+        }
+    }
     func stopListening() {
+        retryTimer?.invalidate(); retryTimer = nil
+        listeningLimit?.invalidate(); listeningLimit = nil
         silenceTimer?.invalidate(); silenceTimer = nil
         audioEngine.stop()
         if tapInstalled { audioEngine.inputNode.removeTap(onBus: 0); tapInstalled = false }
@@ -182,6 +281,7 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
 
     private func finishedSpeaking() {
         speaking = false
+        onFinished?()
         guard handsFree, canListen?() != false else { return }
         let finishedToken = token
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
@@ -191,5 +291,34 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) { finishedSpeaking() }
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) { finishedSpeaking() }
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        guard self.player === player else { return }
+        finishedSpeaking()
+    }
+}
+
+// The access code persists in the device keychain, restricted to this installation.
+private enum VoiceAccessCode {
+    private static func query(_ account: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: "org.armguard.voice", kSecAttrAccount as String: account]
+    }
+    static func read(account: String = "gateway") -> String {
+        var lookup = query(account)
+        lookup[kSecReturnData as String] = true
+        lookup[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(lookup as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+    static func save(_ value: String, account: String = "gateway") {
+        let query = query(account)
+        if value.isEmpty { SecItemDelete(query as CFDictionary); return }
+        let fields: [String: Any] = [kSecValueData as String: Data(value.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
+        if SecItemUpdate(query as CFDictionary, fields as CFDictionary) == errSecItemNotFound {
+            SecItemAdd(query.merging(fields) { _, new in new } as CFDictionary, nil)
+        }
+    }
 }

@@ -11,8 +11,9 @@ xcuserdata/
 .env
 .env.*
 !.env.example
+services/voice_gateway/agent-setup.local.json
 
-# Model weights (too large for git)
+# Training checkpoints stay local; distribute Core ML packages separately.
 models/
 *.pt
 *.pth

@@ -22,6 +22,10 @@ def check_bundle(app):
     template = json.loads((app / "RoutineTemplate.json").read_text())
     if template.get("practiceOnly") is not True:
         raise ValueError("missing practice-only routine at bundle root")
+    if not (app / "VoiceInstructions.txt").is_file():
+        raise ValueError("direct phone voice instructions are missing")
+    if not (app / "SterileParts.mlmodelc").is_dir():
+        raise ValueError("protected-opening model was not compiled into the app")
 
 
 if __name__ == "__main__":

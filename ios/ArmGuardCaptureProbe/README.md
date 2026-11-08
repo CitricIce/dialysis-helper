@@ -3,7 +3,7 @@
 The existing Xcode project now has two tabs. **Capture test** preserves the original
 RGB/LiDAR hardware milestone. **Practice coach** adds routine checks, Apple hand
 tracking, optional custom fingertips/protected-part detection, label OCR, BLE,
-local speech and optional dynamic Cartesia Q&A. No printed markers are needed.
+a continuous Cartesia voice conversation and a phone-voice fallback. No printed markers are needed.
 The app is foreground-only and practice-only. No trained model, prescription or
 clinic protocol is bundled. No video is recorded or uploaded.
 
@@ -130,73 +130,107 @@ verify rear LiDAR. Build output is under the repository's ignored `build/` folde
 
 ## Practice coach: test without a model or Cartesia
 
-1. Select a practice slot and **Start practice**. Try a bare yes: it must leave the
-   check open. Describe an action: it is recorded as a self-report. Try asking
-   “Why is this needed?”: the check must stay open. Explain and Repeat work locally.
-2. Supplies and protected-surface read-backs need a separate confirmation. No
-   supplied fluid values are clinically checked. Listen requires on-device English
-   recognition support; otherwise use typed responses. Voice commands are exact
-   phrases such as pause, help, repeat, confirm, ask a question and start monitoring.
-   Configure cloud voice and enable prompt listening before hand preparation to
-   enter Q&A by voice without touching the phone at each check.
-3. Start camera with both hands visible. Cyan points show fingertips. Diagnostics
-   show the provider, model status and pipeline time. Without `SterileParts`, the
-   app explicitly reports unavailable proximity and cannot arm monitoring.
-4. Put a mock label in view and tap **Read visible label text** while checking.
-   Inspect the OCR yourself. It cannot choose strength, compare a prescription,
-   verify packaging/fluid quality or complete the check.
-5. At the connection check, choose **Finish preparation practice only** while the
-   model is absent. It must not report a monitored/clean exchange. Use New practice
-   to start another test; previous event logs remain on the phone.
-6. Test Pause, app background/lock and tab switching. Camera/voice pause; band
-   intensity expires/off is sent. Resume never automatically restores monitoring.
-7. Flash the updated ESP32 sketch, choose the matching firmware mode, Connect and
-   Test pulse. Compare fixed patterns vs PWM v2 on the actual band. Never change
-   firmware mode while armed. No band is needed for preparation practice.
+1. Open the gear menu and choose **Try phone voice**. It starts the practice and
+   camera together. Allow camera, microphone and on-device speech permissions.
+   Say done to report an action. Ask “Why is this needed?”: the explanation must
+   leave the check open. Say pause, resume, or repeat without touching the screen.
+2. Bag details and protected-opening read-backs need a separate confirmation.
+   A bare yes cannot supply missing bag details. Say the details, compare them
+   with your written instructions, then say they match. No supplied fluid values
+   are clinically validated. Phone recognition needs on-device English support;
+   **Type instead** is available as an accessibility fallback.
+3. The bundled RF-DETR model detects hands and protected connector tips. Apple Vision supplies fingertips. Monitoring requires a fresh clear view, usable depth and both hands fully tracked. Say
+   **continue without camera** to advance this practice explicitly unmonitored,
+   or **finish setup** to stop after preparation. Neither records a clean exchange.
+4. Say **read the label** with a mock label in view. Inspect the text yourself;
+   it does not choose fluid strength, compare a prescription or complete a check.
+5. Say **end session**, then start another practice through **New practice**.
+   Backgrounding/locking pauses capture and voice; **Resume voice** is required
+   on return. Monitoring never restarts automatically. Review flags stay latched.
+6. Connect the wristband through setup before hand preparation. Choose the
+   installed firmware and test a vibration. Variable intensity needs the updated
+   sketch. Do not change firmware while monitoring.
 
-The four exchange labels are placeholders, not a recommended four-exchange daily
-schedule. The bundled check order needs PD-team review before any real-exchange
-use. Source and research decisions are in [DESIGN.md](../../DESIGN.md).
+The camera/depth hardware test and diagnostics are under the gear menu's
+**Developer tools**. The four exchange labels are practice placeholders, not a
+recommended daily schedule. The routine needs care-team review before real use.
+See [DESIGN.md](../../DESIGN.md) for research and remaining detector limitations.
 
-## Add the trained protected-part model
+## Bundled protected-part model
 
-Export a Vision-compatible detector with NMS, named **SterileParts**, and add its
-`.mlpackage`/`.mlmodel` to the app target's Sources build phase in Xcode. The build
-must produce `SterileParts.mlmodelc` in the bundle. Required exact class names:
-`sterile_tip`, `cap_interior`, `connector_opening`. Label exposed openings, not
-entire connector bodies. Optional fingertip labels: `fingertip`, `thumb_tip`,
-`index_tip`, `middle_tip`, `ring_tip`, `little_tip`. Whole-hand boxes are ignored
-for fine geometry; Apple tips fill custom coverage gaps.
+`SterileParts.mlpackage` now contains the teammate's RF-DETR Small export (512 px,
+300 queries, approximately 55 MB of weights), already registered in the Xcode
+Sources phase. Xcode produces `SterileParts.mlmodelc`. Class 0 is the reserved
+placeholder, class 1 is `Hand`, and class 2 is `Sterile_connector_tip`. Explicit
+metadata identifies raw logits, normalized cxcywh boxes, output names, background
+slot and app roles. Learned weights are unchanged by this integration.
 
-On device, verify boxes against known props and portrait orientation. Start with
-a matte, dry bench and disconnected mock connectors. For arming, the latest
-observation must be under 250 ms old, have a loaded model, protected surfaces,
-usably registered depth, both hands with all five confident Apple tips each, and
-no current proximity flag. This strict gate may need ergonomic revision after
-measurement; it must not be relaxed into silently accepting an unobserved hand.
+The app applies sigmoid unconditionally to RF-DETR logits, excludes the reserved
+slot, and reads outputs by name. It rejects unsupported tensor shapes/types and
+nonfinite values. Whole-hand boxes are displayed; Apple Vision provides fingertip
+coverage for proximity. The model contains no cap-interior or clothing/floor class.
 
-Test a known approach/retreat, hovering above a cap, occlusion, lost hands, model
-failure, camera interruption and CPU/thermal load. A projected overlap flags
-review; it does not claim physical contact. Review remains latched across pause
-and resume. No real mating-pair exceptions or body/clothing/floor detectors are
-implemented. Thresholds are experimental, and a model file existing does not
-establish accuracy. Measure warning latency at the physical motor.
+The separate image-scale method has no default millimetre calibration and does
+not drive the wristband. Current alerts use registered depth and the existing
+experimental proximity gate. Camera arming requires a fresh clear observation,
+protected surfaces, usable depth and both hands with all five confident Apple tips
+each. Image overlap requests review; it cannot prove physical contact. Pause,
+backgrounding, stale data and review flags do not allow a second alert loop to
+restart the band.
 
-## Enable dynamic questions
+Check boxes and fingertips against real mock props in portrait orientation. Test
+approach/retreat, hovering, occlusion, loss, heat and frame age. The Mac model
+smoke check verifies loading, input rotation/RGB/normalization and actual inference;
+it does not establish real-photo accuracy or iPhone warning latency:
 
-Follow [voice gateway setup](../../services/voice_gateway/README.md). Enter its
-base URL and separate gateway token in the app's Cartesia connection fields.
-These fields stay in memory. Enable cloud questions, then tap **Ask a question**
-while checking/paused. Streaming microphone audio goes to Cartesia; camera images
-stay on the phone. End Q&A before answering or confirming the app check. No agent
-text can complete a check. Account-specific session/audio retention must be
-reviewed before using patient information.
+```sh
+mkdir -p build/model-review
+xcrun swiftc -swift-version 5 ios/ArmGuardCaptureProbe/Core/Sources/CaptureProbeCore/*.swift \
+  ios/ArmGuardCaptureProbe/ArmGuardCaptureProbe/RFDETRDetector.swift \
+  scripts/check-rfdetr-model.swift -o build/model-review/check-model
+build/model-review/check-model
+```
 
-Optional Cartesia routine speech is a separate switch. Built-in speech works
-without it, and urgent proximity/loss warnings always use local speech. Test loss
-of the gateway/network: Explain stays available and routine state stays unchanged.
-Managed-Agent access, voice ID, live audio round trips, barge-in/echo behavior and
-account credits have not been verified in this workspace.
+For a replacement export, supply the actual training class IDs and background slot;
+do not infer them by alphabetically sorting project names. For this exact project:
+
+```sh
+python3 scripts/export_rfdetr_coreml.py --weights /path/to/weights.pt \
+  --classes 'Hand,Sterile_connector_tip' --background-class-id 0 --image /path/to/photo.jpg
+```
+
+A training COCO annotations file or explicit index-to-name JSON can instead be
+passed with `--class-map`. Any exported replacement needs photo parity and phone
+bench tests before use. A Vision/NMS image-input model remains supported, using
+exact protected-opening labels or explicit role metadata.
+
+## Enable conversational Cartesia voice without a laptop
+
+After installing, open the gear menu and enter the authorized **Cartesia API key**.
+The voice and existing agent IDs are prefilled; they can be changed under Advanced
+voice settings. Enable **Allow Cartesia voice conversation**, close setup and tap
+**Start practice**. The key is saved in the device Keychain, never built into the
+app or checked into Git. This is a personal prototype configuration: each test
+phone gets its key through setup. There is no server address to enter and no Mac
+process to keep running. The phone needs internet for Cartesia.
+
+Questions, interruptions and check replies use one conversation. Native tools
+control transitions and require actual unused user replies. Fixed warning clips
+are fetched directly from Cartesia in advance and kept in memory. Phone speech
+handles immediate alerts when a clip is unavailable. Camera/depth, model inference
+and band commands remain on the phone. Backgrounding pauses the foreground app;
+resuming monitoring still requires fresh observations.
+
+A hosted gateway remains optional under Advanced voice settings for later shared
+app distribution. See [gateway setup](../../services/voice_gateway/README.md). A
+public release should use a hosted credential service rather than distributing a
+shared long-lived API key with the app. The prototype does not embed that key.
+
+Live account tests passed for the selected voice, streaming and a synthetic reply
+through both tools. Direct native requests are included in the optional model smoke
+check's `--direct-voice` mode (environment credentials, small paid API calls).
+Phone microphone/playback, naturalness, interruptions, echo suppression and motor
+latency still need physical-phone testing. Review cloud retention before patient data.
 
 ## Repeatable checks before installing
 

@@ -90,22 +90,51 @@ func readyForMonitoring() throws -> RoutineSession {
     var session = try RoutineSession(template: practiceTemplate())
     session.start()
     while let check = session.currentCheck, check.responseKind != .monitoring {
+        let previous = session.checkIndex
         _ = session.submit("I inspected the practice supplies")
         if check.responseKind == .readBack { _ = session.confirmReadBack() }
+        try expect(session.checkIndex > previous, "Preparation stalled at \(check.id)")
     }
     return session
 }
 checks += [
-    ("Questions, uncertainty and rote yes do not advance a check", {
+    ("Questions and uncertainty hold the step; natural completion is self-report", {
         var session = try RoutineSession(template: practiceTemplate())
         session.start()
-        for response in ["yes", "yes yes done", "I have not checked", "I didn't check", "Why is this needed?", "How do I check the room"] {
+        for response in ["hello", "I have not checked", "I didn't check", "It isn't prepared", "I will put on my mask", "I need to get cleaned up", "Why is this needed?", "How do I check the room"] {
             _ = session.submit(response)
             try expect(session.checkIndex == 0, "Unfinished action advanced: \(response)")
         }
         _ = session.submit("I removed direct airflow")
         try expect(session.checkIndex == 1, "Action report not recorded")
         try expect(session.events.last?.evidence == "self_report", "Report misrepresented as verified")
+        _ = session.submit("yes")
+        try expect(session.checkIndex == 1 && session.pendingReadBack == nil, "A bare yes supplied missing bag details")
+    }),
+    ("Spoken read-back confirmation and one-turn cloud guard", {
+        var session = try RoutineSession(template: practiceTemplate())
+        session.start(); _ = session.submit("done")
+        _ = session.submit("Practice bag product strength volume expiry")
+        _ = session.submit("Why do I check this?")
+        try expect(session.checkIndex == 1 && session.pendingReadBack != nil, "Question altered read-back")
+        _ = session.submit("they match")
+        try expect(session.checkIndex == 2, "Spoken confirmation did not advance")
+        var gate = SpokenReplyGate()
+        gate.receive("I've put on my mask", turn: 1)
+        try expect(gate.consume("done", expectedCheckID: "mask", currentCheckID: "mask") == nil, "Invented consent accepted")
+        try expect(gate.consume("I've put on my mask", expectedCheckID: "hands", currentCheckID: "mask") == nil, "Stale step accepted")
+        try expect(gate.consume("I've put on my mask", expectedCheckID: "mask", currentCheckID: "mask") != nil, "Actual words rejected")
+        try expect(gate.consume("I've put on my mask", expectedCheckID: "hands", currentCheckID: "hands") == nil, "Same user turn advanced twice")
+        gate.receive("done", turn: 0)
+        try expect(gate.consume("done", expectedCheckID: "hands", currentCheckID: "hands") == nil, "Replayed turn accepted")
+    }),
+    ("Skipping camera is explicit unobserved practice and cannot clear review", {
+        var session = try readyForMonitoring()
+        try expect(session.continueWithoutCamera(), "Practice skip unavailable")
+        try expect(session.events.contains(where: { $0.kind == "camera_step_skipped" && $0.evidence == "explicit_unobserved_practice" }), "Skip represented as monitored")
+        var flagged = try readyForMonitoring()
+        _ = flagged.armMonitoring(visionReady: true); flagged.flagPossibleContact()
+        try expect(!flagged.continueWithoutCamera() && flagged.reviewRequired, "Skip cleared review")
     }),
     ("Read-back needs a separate exact confirmation", {
         var session = try RoutineSession(template: practiceTemplate())
@@ -149,6 +178,7 @@ checks += [
         var session = try readyForMonitoring()
         var windows = 0
         while session.phase != .completed {
+            let previous = session.checkIndex
             guard let check = session.currentCheck else { throw CheckFailure(description: "Missing next step") }
             if check.responseKind == .monitoring {
                 try expect(session.armMonitoring(visionReady: true), "Could not arm next window")
@@ -158,6 +188,7 @@ checks += [
                 _ = session.submit("I reviewed the practice steps")
                 if check.responseKind == .readBack { _ = session.confirmReadBack() }
             }
+            try expect(session.checkIndex > previous, "Practice stalled at \(check.id)")
         }
         try expect(windows == 2, "Connection/disconnection windows merged or skipped")
         try expect(session.events.last?.evidence == "not_a_clean_exchange_claim", "Completion implies verified cleanliness")
@@ -199,6 +230,81 @@ checks += [
     })
 ]
 var throwAwayDepthCall = false
+
+checks += [
+    ("RF-DETR raw logits in zero-to-one range still require sigmoid", {
+        let found = try RFDETRDecoding.decode(boxes: [0.5, 0.5, 0.2, 0.4],
+            logits: [0.9, 0.1, 0.2], queries: 1, classCount: 3,
+            classes: [0: "_roboflow_placeholder", 1: "Hand", 2: "Sterile_connector_tip"], backgroundClassID: 0)
+        try expect(found.count == 1 && found[0].label == "Sterile_connector_tip", "Background or class ID decoded incorrectly")
+        try expect(abs(found[0].confidence - 0.549834) < 0.00001, "Positive logits treated as probabilities")
+        try expect(abs(found[0].box.x - 0.4) < 0.00001 && abs(found[0].box.height - 0.4) < 0.00001, "Box coordinates decoded incorrectly")
+    }),
+    ("RF-DETR rejects malformed outputs and never rescales arbitrary boxes", {
+        try expectThrow { _ = try RFDETRDecoding.decode(boxes: [0.5, 0.5, 0.2, 0.2], logits: [0.2], queries: 1, classCount: 3, classes: [1: "Hand"], backgroundClassID: 0) }
+        let outside = try RFDETRDecoding.decode(boxes: [300, 300, 50, 50], logits: [0.2], queries: 1, classCount: 1, classes: [0: "Hand"], backgroundClassID: nil)
+        try expect(outside.isEmpty, "Box units silently inferred/rescaled")
+        let crossing = try RFDETRDecoding.decode(boxes: [-0.1, 0.5, 0.4, 0.4], logits: [2], queries: 1, classCount: 1, classes: [0: "Hand"], backgroundClassID: nil)
+        try expect(crossing.count == 1 && crossing[0].box.x == 0 && abs(crossing[0].box.width - 0.1) < 0.00001, "Valid off-frame box not clipped")
+        try expectThrow { _ = try RFDETRDecoding.decode(boxes: [.nan, 0.5, 0.2, 0.2], logits: [0.2], queries: 1, classCount: 1, classes: [0: "Hand"], backgroundClassID: nil) }
+        let unknown = try RFDETRDecoding.decode(boxes: [0.5, 0.5, 0.2, 0.2], logits: [5, -5], queries: 1, classCount: 2, classes: [1: "Hand"], backgroundClassID: nil)
+        try expect(unknown.isEmpty, "Unknown class invented a known label")
+    }),
+    ("Class roles do not turn arbitrary catheter bodies into protected openings", {
+        try expect(DetectionLabels.role(for: "Sterile_connector_tip") == .protectedOpening, "Bundled protected class ignored")
+        try expect(DetectionLabels.role(for: "Hand") == .hand, "Whole hand became a fingertip")
+        for name in ["catheter", "non_sterile_connector", "tip", "finger", "fingertip_sleeve"] {
+            try expect(DetectionLabels.role(for: name) == .ignored, "Loose substring classified \(name)")
+        }
+    }),
+    ("Paused and stale observations cannot drive new alerts", {
+        let close = ProximityDecision.warning(240, meters: 0.005)
+        for phase: RoutinePhase in [.idle, .checking, .paused, .reviewRequired, .preparationOnly, .completed] {
+            try expect(ProximityFeedback.level(phase: phase, fresh: true, decision: close) == .none, "Alert outside monitoring")
+        }
+        try expect(ProximityFeedback.level(phase: .monitoring, fresh: false, decision: close) == .none, "Stale alert accepted")
+        try expect(ProximityFeedback.level(phase: .monitoring, fresh: true, decision: close) == .high, "Current armed warning lost")
+    }),
+    ("Image scale has no assumed millimetres and clears when the reference is lost", {
+        var tracker = ScaleRiskTracker()
+        let measurement = ScaleProximity.measure(fingertips: [SensorPoint(x: 0.1, y: 0.5)], hands: [],
+            regions: [ProtectedRegion(x: 0.2, y: 0.4, width: 0.1, height: 0.2)], imageWidth: 1000, imageHeight: 500)
+        try expect(measurement != nil, "Image geometry failed")
+        try expect(tracker.update(measurement) == .none && tracker.mmPerPixel == nil, "Assumed physical prop size")
+        tracker.sterileTipSizeMM = 10
+        _ = tracker.update(measurement)
+        try expect(tracker.mmPerPixel != nil, "Explicit calibration unavailable")
+        _ = tracker.update(nil)
+        try expect(tracker.mmPerPixel == nil && tracker.distanceMM == nil, "Lost reference reused stale scale")
+    }),
+    ("Direct phone requests carry credentials only in HTTPS headers", {
+        let template = try practiceTemplate()
+        let request = try CartesiaRequests.agentSession(apiKey: "test-key", voiceID: "test-voice", agentID: "agent_test",
+            instructions: "Trusted practice guidance. ", initialPrompt: template.checks[0].prompt,
+            checks: template.checks, checkID: "room", phase: .checking)
+        try expect(request.url?.host == "api.cartesia.ai" && request.url?.scheme == "https", "Direct request uses a local server")
+        try expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer test-key", "Missing authenticated header")
+        try expect(request.url?.query == nil, "Secret passed in URL")
+        let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+        let config = body["config_overrides"] as! [String: Any]
+        try expect((config["instructions"] as? String)?.contains("starting_check_id") == true, "Native state context missing")
+        try expect(!String(decoding: request.httpBody!, as: UTF8.self).contains("test-key"), "Provider key leaked into instructions")
+        try expectThrow { _ = try CartesiaRequests.agentSession(apiKey: "key", voiceID: "voice", agentID: "../outside", instructions: "rules", initialPrompt: "hello", checks: template.checks, checkID: "room", phase: .checking) }
+    }),
+    ("Phone WAV finalizer bounds streaming lengths and preserves audio samples", {
+        var wav = Data("RIFF".utf8)
+        func little(_ value: UInt32, bytes: Int = 4) -> Data { Data((0..<bytes).map { UInt8(truncatingIfNeeded: value >> (8 * $0)) }) }
+        wav.append(little(.max)); wav.append(Data("WAVEfmt ".utf8)); wav.append(little(16))
+        wav.append(little(1, bytes: 2)); wav.append(little(1, bytes: 2)); wav.append(little(44100)); wav.append(little(88200))
+        wav.append(little(2, bytes: 2)); wav.append(little(16, bytes: 2)); wav.append(Data("data".utf8)); wav.append(little(.max))
+        wav.append(Data([0, 0, 1, 0, 255, 127, 0, 128]))
+        let finalized = try WaveClip.finalized(wav)
+        try expect(Array(finalized[4..<8]) == Array(little(44)), "RIFF size not finalized")
+        try expect(Array(finalized[40..<44]) == Array(little(8)), "Audio length remains open-ended")
+        try expect(finalized.suffix(8) == wav.suffix(8), "Samples changed")
+        try expectThrow { _ = try WaveClip.finalized(Data("invalid".utf8)) }
+    })
+]
 
 var failures = 0
 for (name, check) in checks {

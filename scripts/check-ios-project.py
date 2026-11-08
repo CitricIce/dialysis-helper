@@ -39,6 +39,8 @@ def main():
     resource_paths = {objects[objects[key]["fileRef"]]["path"] for key in resources["files"]}
     require("ArmGuardCaptureProbe/Resources/RoutineTemplate.json" in resource_paths,
             "routine JSON must be copied individually into the flat app bundle")
+    require("ArmGuardCaptureProbe/Resources/VoiceInstructions.txt" in resource_paths,
+            "voice instructions must be bundled for direct phone connections")
     for path in resource_paths:
         reference = next(o for o in objects.values() if o.get("isa") == "PBXFileReference" and o.get("path") == path)
         is_folder = reference.get("lastKnownFileType") == "folder" or reference.get("explicitFileType") == "folder"
@@ -56,7 +58,8 @@ def main():
     scheme = ET.parse(PROJECT / "xcshareddata/xcschemes/ArmGuardCaptureProbe.xcscheme")
     for reference in scheme.iter("BuildableReference"):
         require(reference.attrib["BlueprintIdentifier"] == target_id, "scheme points to a nonexistent target")
-    print(f"PASS: project membership ({len(expected)} sources), resources, scheme, permissions and practice template")
+    swift_count = sum(path.endswith(".swift") for path in expected)
+    print(f"PASS: project membership ({swift_count} Swift sources, {len(expected) - swift_count} model), resources, scheme, permissions and practice template")
 
 
 if __name__ == "__main__":

@@ -33,6 +33,7 @@ const uint8_t HIGH_DUTY   = 255;
 const unsigned long MEDIUM_ON_MS  = 250;
 const unsigned long MEDIUM_OFF_MS = 250;
 const unsigned long V2_WATCHDOG_MS = 300;
+const unsigned long LEGACY_LIMIT_MS = 1500; // legacy writes have no heartbeat
 const unsigned long TEST_MS = 400;
 
 enum Level : uint8_t { LEVEL_OFF = 0, LEVEL_MEDIUM = 1, LEVEL_HIGH = 2 };
@@ -86,8 +87,8 @@ class IntensityCallbacks : public BLECharacteristicCallbacks {
     if (characteristic->getLength() != 2) return;
     const uint8_t *b = characteristic->getData();
     if (b[0] > 2) return;
-    uint8_t d = b[0] == LEVEL_HIGH ? HIGH_DUTY : (b[1] > 0 ? b[1] : MEDIUM_DUTY);
-    post(b[0], b[0] == LEVEL_OFF ? 0 : d, true);
+    // Honor the supplied intensity, including zero, in both nonzero modes.
+    post(b[0], b[0] == LEVEL_OFF ? 0 : b[1], true);
   }
 };
 
@@ -151,6 +152,7 @@ void loop() {
     if (test) {
       testUntilMs = now + TEST_MS;
     } else {
+      testUntilMs = 0; // stop/disconnect must also cancel an active test pulse
       if ((Level)newLevel != level) {
         Serial.print("level ");
         Serial.println(newLevel == LEVEL_HIGH ? "HIGH" : newLevel == LEVEL_MEDIUM ? "MEDIUM" : "OFF");
@@ -167,6 +169,9 @@ void loop() {
   if (usingWatchdog && level != LEVEL_OFF && now - lastCommandMs > V2_WATCHDOG_MS) {
     level = LEVEL_OFF;
     Serial.println("level OFF (watchdog)");
+  }
+  if (!usingWatchdog && level != LEVEL_OFF && now - lastCommandMs > LEGACY_LIMIT_MS) {
+    level = LEVEL_OFF;
   }
 
   // 3. Drive the motor without delay(), so a new warning takes effect immediately.

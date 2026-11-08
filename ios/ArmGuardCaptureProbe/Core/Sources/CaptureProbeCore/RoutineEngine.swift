@@ -66,29 +66,33 @@ public struct RoutineSession {
     /// Responses are recorded as self-reports, never as verified clinical observations.
     public mutating func submit(_ text: String) -> String {
         guard phase == .checking, let check = currentCheck, check.responseKind != .monitoring else {
-            return "Use the monitoring controls for this step."
+            return "Tell me when you’re ready to begin, or say pause."
         }
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = VoiceIntent.normalize(cleaned)
-        let words = normalized.split(separator: " ")
-        let uncertainty = ["not ready", "not sure", "unsure", "have not", "haven t", "did not", "didn t", "wrong bag"]
-        let questionStarts = ["why ", "how ", "what ", "when ", "where ", "should ", "can ", "could ", "do i ", "is it "]
-        if cleaned.contains("?") || questionStarts.contains(where: normalized.hasPrefix) {
-            pendingReadBack = nil
-            return "That sounds like a question. Say ask a question for a conversation, or help for offline explanation. This check is still open."
-        }
-        let emptyConfirmations: Set<String> = ["yes", "done", "ready", "okay", "ok", "confirm"]
-        guard words.count >= 3, !words.allSatisfy({ emptyConfirmations.contains(String($0)) }),
-              !uncertainty.contains(where: normalized.contains) else {
-            pendingReadBack = nil
-            return "Take your time. Describe what you checked, or say help. A yes or done alone will not finish this check."
+        guard !normalized.isEmpty else { return "I didn't catch that. Could you say it again?" }
+        if VoiceIntent.isQuestion(cleaned) { return check.help }
+        let uncertainty = ["not ", "unsure", "haven t", "didn t", "isn t", "aren t", "wasn t", "weren t", "don t", "can t", "cannot", "wrong bag", "need more time", "need to ", "going to ", "i will ", "i should "]
+        guard !uncertainty.contains(where: normalized.contains), normalized != "no", normalized != "not" else {
+            return "Take your time. Say ready when you've finished, or ask me a question."
         }
         if check.responseKind == .readBack {
+            if pendingReadBack != nil, VoiceIntent.isAffirmative(cleaned) {
+                _ = confirmReadBack()
+                return currentCheck?.prompt ?? "We're finished. Is there anything else you'd like to ask?"
+            }
+            guard normalized.split(separator: " ").count >= 3, !VoiceIntent.isAffirmative(cleaned) else {
+                return check.id == "supplies" ? "Read me the name, strength, amount and expiry date on the bag." : "Tell me which openings need to stay untouched."
+            }
             pendingReadBack = cleaned
-            return "Read-back captured, not clinically verified. If it matches your instructions, say confirm. Otherwise say help."
+            return "You said: \(cleaned). " + (check.id == "supplies" ? "Compare those details with your instructions. Do they match?" : "Ready to keep those openings clear?")
+        }
+        let reports = ["prepared", "checked", "removed", "turned off", "washed", "cleaned", "dried", "inspected", "reviewed", "put on", "mask is on", "it s on", "finished", "completed", "set up", "i read", "got the"]
+        guard VoiceIntent.isAffirmative(cleaned) || reports.contains(where: normalized.contains) else {
+            return "Tell me when you've finished, or ask me a question."
         }
         advance(evidence: "self_report")
-        return currentCheck?.prompt ?? "Preparation practice recorded."
+        return currentCheck?.prompt ?? "We’re finished. Is there anything else you’d like to ask?"
     }
 
     public mutating func confirmReadBack() -> Bool {
@@ -111,6 +115,15 @@ public struct RoutineSession {
               !reviewRequired else { return }
         phase = .preparationOnly
         record("preparation_only", evidence: "connection_not_monitored")
+    }
+
+    /// Explicit practice-only continuation; no observation is represented as a pass.
+    public mutating func continueWithoutCamera() -> Bool {
+        guard template.practiceOnly, phase == .checking,
+              currentCheck?.responseKind == .monitoring, !reviewRequired else { return false }
+        record("camera_step_skipped", evidence: "explicit_unobserved_practice")
+        advance(evidence: "not_monitored")
+        return true
     }
 
     public mutating func finishMonitoring() -> Bool {
@@ -164,22 +177,53 @@ public struct RoutineSession {
 }
 
 public enum VoiceIntent: Equatable {
-    case pause, repeatPrompt, help, askQuestion, confirm, arm, finishPreparation, finishMonitoring, answer(String)
+    case pause, resume, endSession, repeatPrompt, help, askQuestion, confirm, arm, skipCamera, readLabel, finishPreparation, finishMonitoring, answer(String)
     public static func normalize(_ text: String) -> String {
         text.lowercased().components(separatedBy: CharacterSet.alphanumerics.inverted)
             .filter { !$0.isEmpty }.joined(separator: " ")
     }
+    public static func isQuestion(_ text: String) -> Bool {
+        let normalized = normalize(text)
+        return text.contains("?") || ["why ", "how ", "what ", "when ", "where ", "should ", "can ", "could ", "do i ", "is it ", "is this "].contains(where: normalized.hasPrefix)
+    }
+    public static func isAffirmative(_ text: String) -> Bool {
+        ["yes", "yeah", "yep", "yes they do", "yes it does", "that s right", "that matches", "they match", "correct", "i confirm", "confirm", "ready", "i m ready", "done", "all done", "finished", "okay", "ok", "yes done", "okay done", "all set", "i ve finished", "let s go"].contains(normalize(text))
+    }
     public static func parse(_ text: String) -> VoiceIntent {
         switch normalize(text) {
-        case "pause", "stop", "pause routine", "stop routine": return .pause
-        case "repeat", "repeat that": return .repeatPrompt
+        case "pause", "stop", "pause routine", "stop routine", "wait", "hold on", "give me a minute": return .pause
+        case "resume", "continue", "let s continue", "i m back", "let s keep going": return .resume
+        case "end session", "end the session", "stop listening", "goodbye": return .endSession
+        case "repeat", "repeat that", "say that again", "what did you say": return .repeatPrompt
         case "help", "i need help", "not ready": return .help
         case "ask a question", "i have a question", "voice questions": return .askQuestion
         case "confirm", "i confirm": return .confirm
-        case "start monitoring", "arm monitoring": return .arm
-        case "finish preparation practice": return .finishPreparation
-        case "finish monitoring", "finish connection practice": return .finishMonitoring
+        case "start monitoring", "arm monitoring", "start watching", "let s connect", "ready to connect": return .arm
+        case "continue without camera", "continue without the camera", "skip the camera step": return .skipCamera
+        case "read the label", "read my bag", "scan the label": return .readLabel
+        case "finish preparation practice", "finish setup": return .finishPreparation
+        case "finish monitoring", "finish connection practice", "i m connected", "i ve connected it", "i m disconnected", "i ve disconnected it": return .finishMonitoring
         default: return .answer(text)
         }
+    }
+}
+
+/// A cloud tool can submit only the latest actual user transcript, once, for the current step.
+/// Generated assistant speech never enters this gate.
+public struct SpokenReplyGate {
+    private var turn = -1
+    private var consumed = -1
+    private var words = ""
+    public init() {}
+    public mutating func receive(_ text: String, turn: Int) {
+        guard turn > self.turn else { return }
+        self.turn = turn; words = text
+    }
+    public mutating func consume(_ reported: String, expectedCheckID: String, currentCheckID: String) -> String? {
+        guard turn >= 0, consumed != turn, expectedCheckID == currentCheckID,
+              !VoiceIntent.normalize(words).isEmpty,
+              VoiceIntent.normalize(reported) == VoiceIntent.normalize(words) else { return nil }
+        consumed = turn
+        return words
     }
 }

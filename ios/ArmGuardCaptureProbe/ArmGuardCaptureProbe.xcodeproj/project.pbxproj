@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		8429D897A5BA38A28929B8C5 = {isa = PBXBuildFile; fileRef = 0DBDF9922834E9D620397A56; };
+		478EC277E26FEB8C970E4A90 = {isa = PBXBuildFile; fileRef = 98330B3B5D7FBA01C92EBE06; };
+		989E066A61AD945A0F6CE376 = {isa = PBXBuildFile; fileRef = 322DCD301EDE12C296D41E0E; };
 		00B9A21A26DE9052AF87403C /* ArmGuardCaptureProbe/CoachViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE2DB2DE474FA2F841A285ED /* ArmGuardCaptureProbe/CoachViewModel.swift */; };
 		19B06F301C3B561BC74256C4 /* ArmGuardCaptureProbe/CoachSpeech.swift in Sources */ = {isa = PBXBuildFile; fileRef = 354040B8177FA97B95958357 /* ArmGuardCaptureProbe/CoachSpeech.swift */; };
 		5E7E21A0C0DE0000000000A2 /* ArmGuardCaptureProbe/SterileParts.mlpackage in Sources */ = {isa = PBXBuildFile; fileRef = 5E7E21A0C0DE0000000000A1 /* ArmGuardCaptureProbe/SterileParts.mlpackage */; };
@@ -25,6 +28,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0DBDF9922834E9D620397A56 = {isa = PBXFileReference; lastKnownFileType = text; path = ArmGuardCaptureProbe/Resources/VoiceInstructions.txt; sourceTree = "<group>"; };
+		98330B3B5D7FBA01C92EBE06 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Sources/CaptureProbeCore/CartesiaProtocol.swift; sourceTree = "<group>"; };
+		322DCD301EDE12C296D41E0E = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/RFDETRDetector.swift; sourceTree = "<group>"; };
 		00127F63DA98FE217FFC8563 /* ArmGuardCaptureProbe/CaptureController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/CaptureController.swift; sourceTree = "<group>"; };
 		112628D3256418F90BF96911 /* Core/Sources/CaptureProbeCore/RoutineEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Sources/CaptureProbeCore/RoutineEngine.swift; sourceTree = "<group>"; };
 		175B91E4AF061CBF18128D5C /* Core/Sources/CaptureProbeCore/ProximityEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Sources/CaptureProbeCore/ProximityEngine.swift; sourceTree = "<group>"; };
@@ -59,6 +65,9 @@
 		807C382AB49A9BFF2D00E986 = {
 			isa = PBXGroup;
 			children = (
+				0DBDF9922834E9D620397A56,
+				98330B3B5D7FBA01C92EBE06,
+				322DCD301EDE12C296D41E0E,
 				3B564F9F77C1173859B53AF4 /* ArmGuardCaptureProbe/CoachVisionPipeline.swift */,
 				5E7E21A0C0DE0000000000A1 /* ArmGuardCaptureProbe/SterileParts.mlpackage */,
 				AE2DB2DE474FA2F841A285ED /* ArmGuardCaptureProbe/CoachViewModel.swift */,
@@ -146,6 +155,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8429D897A5BA38A28929B8C5,
 				4E531CF7D06A5C55BE673A55 /* ArmGuardCaptureProbe/Resources/RoutineTemplate.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -157,6 +167,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				478EC277E26FEB8C970E4A90,
+				989E066A61AD945A0F6CE376,
 				308F791C4F9B9DF6A3204CBC /* ArmGuardCaptureProbe/CoachVisionPipeline.swift in Sources */,
 				5E7E21A0C0DE0000000000A2 /* ArmGuardCaptureProbe/SterileParts.mlpackage in Sources */,
 				00B9A21A26DE9052AF87403C /* ArmGuardCaptureProbe/CoachViewModel.swift in Sources */,

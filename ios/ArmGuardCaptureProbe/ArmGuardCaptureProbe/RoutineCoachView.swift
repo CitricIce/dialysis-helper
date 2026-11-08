@@ -1,271 +1,241 @@
 import SwiftUI
 
 struct ContentView: View {
-    var body: some View {
-        TabView {
-            RoutineCoachView().tabItem { Label("Practice coach", systemImage: "list.bullet.clipboard") }
-            CaptureProbeView().tabItem { Label("Capture test", systemImage: "camera.viewfinder") }
-        }
-    }
+    var body: some View { RoutineCoachView() }
 }
 
 struct RoutineCoachView: View {
     @StateObject private var coach = CoachViewModel()
     @Environment(\.scenePhase) private var scenePhase
+    @State private var showSettings = false
+    @State private var showCapture = false
+    @State private var showTyping = false
     @State private var showReset = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text("ArmGuard").font(.largeTitle.bold())
-                Text("Practice coach").font(.title2)
-                Label("Practice only · clinic protocol not configured", systemImage: "info.circle")
-                    .font(.callout).foregroundStyle(.orange)
-                if let session = coach.session {
-                    if session.phase == .idle {
-                        Text(session.template.protocolNote).font(.callout)
-                        Picker("Practice slot", selection: $coach.selectedSlot) {
-                            ForEach(session.template.slots, id: \.self) { Text($0).tag($0) }
-                        }
-                        Text("These are practice labels. They do not set a daily treatment schedule.").font(.caption).foregroundStyle(.secondary)
-                        Button("Start practice") { coach.start() }.buttonStyle(.borderedProminent)
-                    } else {
-                        HStack {
-                            Text(coach.selectedSlot).font(.headline)
-                            Spacer()
-                            Text(session.phase.rawValue).font(.caption.monospaced())
-                        }
-                        ProgressView(value: Double(session.checkIndex), total: Double(session.template.checks.count))
-                        if session.phase == .reviewRequired || session.reviewRequired {
-                            Label("Possible overlap needs review", systemImage: "exclamationmark.octagon.fill")
-                                .font(.headline).foregroundStyle(.red)
-                            Text("This view cannot determine physical contact. Use your PD team's instructions. Resume cannot clear this flag.")
-                        } else if session.phase == .completed || session.phase == .preparationOnly {
-                            Text(session.phase == .completed ? "Practice record finished" : "Preparation practice only").font(.title2.bold())
-                            Text("This record does not establish that an exchange was sterile or treatment was completed.")
-                        } else if let check = session.currentCheck {
-                            Text("\(min(session.checkIndex + 1, session.template.checks.count)) / \(session.template.checks.count) · \(check.title)").font(.title3.bold())
-                            Text(check.prompt).fixedSize(horizontal: false, vertical: true)
-                            HStack {
-                                Button("Repeat") { coach.prompt() }
-                                Button("Explain") { coach.explain() }
-                            }.buttonStyle(.bordered)
-                            if session.phase == .checking, check.responseKind != .monitoring {
-                                TextField("Describe what you checked", text: $coach.response, axis: .vertical)
-                                    .textFieldStyle(.roundedBorder).lineLimit(2...5)
-                                    .accessibilityIdentifier("checkResponse")
-                                HStack {
-                                    Button("Submit response") { coach.submit() }.buttonStyle(.borderedProminent)
-                                        .disabled(coach.conversation.active)
-                                    Button(coach.speech.isListening ? "Stop listening" : "Listen") {
-                                        if coach.speech.isListening { coach.speech.stopListening() }
-                                        else { coach.speech.stop(); coach.speech.listen() }
-                                    }.buttonStyle(.bordered).disabled(coach.conversation.active)
-                                }
-                                if let readBack = session.pendingReadBack {
-                                    Text("Your read-back: \(readBack)").font(.callout)
-                                    Text("Compare it with your written instructions. The app has not verified it.").font(.caption)
-                                    Button("Confirm my read-back") { coach.confirm() }.buttonStyle(.borderedProminent)
-                                        .disabled(coach.conversation.active)
-                                }
-                            }
-                            if check.responseKind == .monitoring, session.phase == .checking {
-                                Button("Start experimental monitoring") { coach.arm() }
-                                    .buttonStyle(.borderedProminent).disabled(!coach.canArm)
-                                Button("Finish preparation practice only") { coach.finishPreparation() }.buttonStyle(.bordered)
-                            }
-                            if session.phase == .monitoring {
-                                Button("Finish this monitoring practice") { coach.finishMonitoring() }.buttonStyle(.bordered)
-                            }
-                        }
-                        HStack {
-                            if session.phase == .paused {
-                                Button("Resume check") { coach.resume() }.buttonStyle(.borderedProminent)
-                            } else if session.phase == .checking || session.phase == .monitoring {
-                                Button("Pause", role: .destructive) { coach.pause() }.buttonStyle(.bordered)
-                            }
-                            Button("New practice", role: .destructive) { showReset = true }.buttonStyle(.bordered)
-                        }
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    HStack {
+                        Text("Practice with ArmGuard").font(.subheadline).foregroundStyle(.secondary)
+                        Spacer()
+                        Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                            .accessibilityLabel("Voice and wristband setup")
                     }
-                }
-                Text(coach.message).font(.callout)
-                    .padding().frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.secondary.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-                if !coach.speech.transcript.isEmpty { Text("Heard: \(coach.speech.transcript)").font(.caption) }
-                visionPanel
-                voicePanel
-                bandPanel
-                DisclosureGroup("Diagnostics and practice events") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(coach.diagnostics).font(.caption.monospaced()).textSelection(.enabled)
-                        ShareLink(item: coach.diagnostics) { Label("Share diagnostics", systemImage: "square.and.arrow.up") }
-                        if let url = coach.logURL {
-                            ShareLink(item: url) { Label("Share event log", systemImage: "doc.text") }
+                    if let session = coach.session {
+                        if session.phase == .idle {
+                            Text("Let's get ready.").font(.largeTitle.bold())
+                            Text("Set your phone in place. Once we start, you can talk to me as you go.")
+                                .font(.title3).foregroundStyle(.secondary)
+                            Text(session.template.protocolNote).font(.callout).foregroundStyle(.secondary)
+                            Picker("Practice", selection: $coach.selectedSlot) {
+                                ForEach(session.template.slots, id: \.self) { Text($0).tag($0) }
+                            }.pickerStyle(.menu)
+                            Button(coach.voiceConfigured ? "Start practice" : "Set up voice") {
+                                if coach.voiceConfigured { coach.start() } else { showSettings = true }
+                            }.buttonStyle(.borderedProminent).controlSize(.large)
+                            Text("Cartesia provides the conversational voice. Connect it before preparing your hands.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        } else {
+                            ProgressView(value: Double(session.checkIndex), total: Double(session.template.checks.count))
+                                .accessibilityLabel("Practice progress")
+                            Text(coach.ended ? "Session ended" : (session.currentCheck?.title ?? "Finished"))
+                                .font(.largeTitle.bold())
+                            voiceCard
+                            if session.reviewRequired {
+                                Label("Possible contact needs review", systemImage: "exclamationmark.octagon.fill")
+                                    .foregroundStyle(.red).font(.headline)
+                                Text("Follow your care team's instructions. The camera cannot confirm contact.")
+                            }
+                            if !coach.scannedLabel.isEmpty {
+                                Text("Visible label text").font(.headline)
+                                Text(coach.scannedLabel).textSelection(.enabled)
+                                Text("Compare it with your written instructions.").font(.footnote).foregroundStyle(.secondary)
+                            }
+                            if session.currentCheck?.responseKind == .monitoring || session.phase == .monitoring {
+                                cameraPreview
+                            }
+                            if coach.ended {
+                                Button("New practice") { showReset = true }.buttonStyle(.borderedProminent)
+                            } else {
+                                HStack(spacing: 20) {
+                                    if !coach.voiceEnabled {
+                                        Button("Resume voice") { coach.resumeVoice() }.buttonStyle(.borderedProminent)
+                                    } else if session.phase == .paused {
+                                        Button("Resume") { coach.resume() }.buttonStyle(.bordered)
+                                    } else {
+                                        Button("Pause") { coach.pause() }.buttonStyle(.bordered)
+                                    }
+                                    Button("End session") { coach.endSession() }.foregroundStyle(.secondary)
+                                }
+                                Button("Type instead") { showTyping = true }.font(.footnote)
+                            }
                         }
-                        Text("Events contain timestamps and evidence categories; no read-back text, audio or images. Voice Q&A may be retained by your Cartesia account.").font(.caption)
-                    }.padding(.top, 8)
+                    } else { Text(coach.message) }
+                }.padding(24)
+            }
+            .navigationTitle("ArmGuard").navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .top) { riskBanner.padding(.horizontal) }
+            .sheet(isPresented: $showSettings) { settings }
+            .sheet(isPresented: $showCapture) { CaptureProbeView() }
+            .sheet(isPresented: $showTyping) {
+                NavigationStack {
+                    Form {
+                        TextField("Your reply or question", text: $coach.response, axis: .vertical)
+                        Button("Send") { coach.submit(); showTyping = false }
+                    }.navigationTitle("Type a reply")
+                        .toolbar { Button("Close") { showTyping = false } }
                 }
-            }.padding()
+            }
+            .confirmationDialog("Start another practice?", isPresented: $showReset, titleVisibility: .visible) {
+                Button("New practice") { coach.reset() }
+            } message: { Text("A new practice record does not resolve a real concern about contact.") }
         }
-        // Pinned above the scroll content so a warning is visible wherever the user has scrolled.
-        .safeAreaInset(edge: .top) { riskBanner.padding(.horizontal) }
-        .animation(.easeOut(duration: 0.15), value: coach.riskLevel)
-        .onChange(of: scenePhase) { _, phase in if phase != .active { coach.backgrounded() } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { coach.backgrounded() }
+            else if phase == .active { coach.foregrounded() }
+        }
         .onDisappear { coach.backgrounded() }
-        .confirmationDialog("Start a new practice record?", isPresented: $showReset, titleVisibility: .visible) {
-            Button("New practice", role: .destructive) { coach.reset() }
-        } message: { Text("Existing events stay on this phone. A reset does not resolve a real contamination concern.") }
     }
 
-    private var visionPanel: some View {
-        GroupBox("Camera observations") {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Button("Start camera") { coach.startCamera() }
-                        .disabled(coach.capture.isRunning || coach.capture.isStarting)
-                    Button("Stop camera") { coach.backgrounded() }.disabled(!coach.capture.isRunning)
-                }.buttonStyle(.bordered)
-                if let image = coach.capture.snapshot.colorImage {
-                    Image(decorative: image, scale: 1).resizable().scaledToFit()
-                        .overlay {
-                            GeometryReader { geometry in
-                                // Native sensor -> portrait display: x=1-y, y=x.
-                                // Preview and inference run at different cadences; overlay is diagnostic only.
-                                if coach.fresh {
-                                    // Whole-hand boxes (green) and the closest hand-to-sterile gap (cyan line).
-                                    ForEach(Array(coach.observation.hands.enumerated()), id: \.offset) { _, hand in
-                                        Rectangle().stroke(.green, lineWidth: 2)
-                                            .frame(width: hand.height * geometry.size.width, height: hand.width * geometry.size.height)
-                                            .position(x: (1 - hand.y - hand.height / 2) * geometry.size.width,
-                                                      y: (hand.x + hand.width / 2) * geometry.size.height)
-                                    }
-                                    if let a = coach.observation.closestHand, let b = coach.observation.closestSurface {
-                                        Path { path in
-                                            path.move(to: CGPoint(x: (1 - a.y) * geometry.size.width, y: a.x * geometry.size.height))
-                                            path.addLine(to: CGPoint(x: (1 - b.y) * geometry.size.width, y: b.x * geometry.size.height))
-                                        }.stroke(.cyan, lineWidth: 2)
-                                        if let mm = coach.observation.distanceMM {
-                                            Text(String(format: "%.0f mm", mm)).font(.caption.bold()).foregroundStyle(.yellow)
-                                                .position(x: (1 - a.y) * geometry.size.width + 24, y: a.x * geometry.size.height - 10)
-                                        }
-                                    }
-                                    ForEach(Array(coach.observation.fingertips.enumerated()), id: \.offset) { _, tip in
-                                        Circle().fill(.cyan).frame(width: 7, height: 7)
-                                            .position(x: (1 - tip.y) * geometry.size.width, y: tip.x * geometry.size.height)
-                                    }
-                                    ForEach(Array(coach.observation.regions.enumerated()), id: \.offset) { _, region in
-                                        Rectangle().stroke(.orange, lineWidth: 2)
-                                            .frame(width: region.height * geometry.size.width, height: region.width * geometry.size.height)
-                                            .position(x: (1 - region.y - region.height / 2) * geometry.size.width,
-                                                      y: (region.x + region.width / 2) * geometry.size.height)
-                                    }
-                                }
-                            }
-                        }
-                }
-                Text(coach.capture.status).font(.caption)
-                Text(coach.riskText).font(.callout)
-                Text(coach.scaleText).font(.caption.monospaced())
-                if !coach.observation.modelInstalled {
-                    Text("Protected-part model not installed. You can test hands, depth, label text and preparation checks. Proximity monitoring cannot start.").font(.caption).foregroundStyle(.orange)
-                }
-                Button("Read visible label text") { coach.scanLabel() }
-                    .disabled(!coach.capture.isRunning || coach.session?.phase != .checking)
-                if !coach.scannedLabel.isEmpty {
-                    Text(coach.scannedLabel).font(.callout).textSelection(.enabled)
-                    Text("OCR suggestion only. No prescription match or automatic check completion.").font(.caption)
-                }
-            }.frame(maxWidth: .infinity, alignment: .leading)
+    private var voiceCard: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Label(coach.conversation.active ? coach.conversation.status : coach.speech.status,
+                  systemImage: coach.conversation.active || coach.speech.isListening ? "waveform" : "mic")
+                .font(.subheadline).foregroundStyle(.secondary)
+            Text(coach.conversation.active && !coach.conversation.lastReply.isEmpty
+                 ? coach.conversation.lastReply : coach.message)
+                .font(.title3).fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("assistantReply")
+            if !coach.ended {
+                Text("Say done, ask a question, or say pause.").font(.footnote).foregroundStyle(.secondary)
+            }
+        }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
+            .background(.tint.opacity(0.07), in: RoundedRectangle(cornerRadius: 20))
+    }
+
+    private var cameraPreview: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let image = coach.capture.snapshot.colorImage {
+                Image(decorative: image, scale: 1).resizable().scaledToFit()
+                    .overlay { detectionOverlay }
+                    .frame(maxHeight: 260).clipShape(RoundedRectangle(cornerRadius: 16))
+            }
+            Label(coach.cameraMessage, systemImage: "camera")
+                .font(.footnote).foregroundStyle(.secondary)
         }
     }
 
     @ViewBuilder private var riskBanner: some View {
-        switch coach.riskLevel {
-        case .high:
-            warningBanner("HIGH RISK!", detail: "Hand is very close to the sterile tip. Move it away now.",
-                          background: .red, foreground: .white, icon: "exclamationmark.octagon.fill")
-        case .medium:
-            warningBanner("MEDIUM RISK", detail: "Hand is getting close to the sterile tip.",
-                          background: .orange, foreground: .black, icon: "exclamationmark.triangle.fill")
-        case .none:
-            EmptyView()
+        if coach.session?.reviewRequired == true || coach.riskLevel != .none {
+            let review = coach.session?.reviewRequired == true
+            let high = review || coach.riskLevel == .high
+            Label(review ? "Pause and check for possible contact" : (high ? "Move your fingers away" : "Your fingers are getting close"),
+                  systemImage: high ? "exclamationmark.octagon.fill" : "exclamationmark.triangle.fill")
+                .font(.headline).padding().frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(high ? Color.white : Color.black)
+                .background(high ? Color.red : Color.orange, in: RoundedRectangle(cornerRadius: 12))
+                .accessibilityAddTraits(.updatesFrequently)
         }
     }
 
-    private func warningBanner(_ title: String, detail: String, background: Color, foreground: Color, icon: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon).font(.title)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.title.bold())
-                Text(detail).font(.callout)
-                if let mm = coach.observation.distanceMM {
-                    Text(String(format: "%.0f mm away (estimated)", mm)).font(.caption.monospaced())
+    private var detectionOverlay: some View {
+        GeometryReader { geometry in
+            if coach.fresh {
+                ForEach(Array(coach.observation.regions.enumerated()), id: \.offset) { _, region in
+                    Rectangle().stroke(.orange, lineWidth: 2)
+                        .frame(width: region.height * geometry.size.width, height: region.width * geometry.size.height)
+                        .position(x: (1 - region.y - region.height / 2) * geometry.size.width,
+                                  y: (region.x + region.width / 2) * geometry.size.height)
+                }
+                ForEach(Array(coach.observation.hands.enumerated()), id: \.offset) { _, hand in
+                    Rectangle().stroke(.green, lineWidth: 1)
+                        .frame(width: hand.height * geometry.size.width, height: hand.width * geometry.size.height)
+                        .position(x: (1 - hand.y - hand.height / 2) * geometry.size.width,
+                                  y: (hand.x + hand.width / 2) * geometry.size.height)
+                }
+                ForEach(Array(coach.observation.fingertips.enumerated()), id: \.offset) { _, point in
+                    Circle().fill(.cyan).frame(width: 6, height: 6)
+                        .position(x: (1 - point.y) * geometry.size.width, y: point.x * geometry.size.height)
                 }
             }
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(foreground)
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(background, in: RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: .combine)
+        }.allowsHitTesting(false).accessibilityHidden(true)
     }
 
-    private var voicePanel: some View {
-        GroupBox("Voice and questions") {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(coach.speech.status).font(.caption)
-                Toggle("Listen after a check prompt", isOn: binding(to: coach.speech, \.handsFree))
-                Text("Check responses use on-device recognition when available. Say pause, help, repeat, confirm or ask a question. Configure voice before hand preparation.").font(.caption)
-                DisclosureGroup("Cartesia connection") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        TextField("https://gateway or http://Mac-name.local:8765", text: binding(to: coach.speech, \.gatewayURL))
+    private var settings: some View {
+        NavigationStack {
+            Form {
+                Section("Voice setup") {
+                    Text("Connect once before starting. During conversation, your microphone audio goes to Cartesia. Camera images stay on your phone.")
+                    if coach.speech.connectionMode == .direct {
+                        SecureField("Cartesia API key", text: binding(to: coach.speech, \.cartesiaAPIKey))
+                            .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
+                        Text("Saved in this iPhone's Keychain. The phone connects directly to Cartesia over the internet; no laptop is needed after installation.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        TextField("Hosted voice server address", text: binding(to: coach.speech, \.gatewayURL))
                             .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                        SecureField("Gateway access token", text: binding(to: coach.speech, \.gatewayToken))
+                        SecureField("Access code", text: binding(to: coach.speech, \.gatewayToken))
+                            .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
+                    }
+                    Toggle("Allow Cartesia voice conversation", isOn: $coach.allowCloudQuestions)
+                    DisclosureGroup("Advanced voice settings") {
+                        Picker("Connection", selection: binding(to: coach.speech, \.connectionMode)) {
+                            Text("Direct from this iPhone").tag(VoiceConnectionMode.direct)
+                            Text("Hosted voice server").tag(VoiceConnectionMode.server)
+                        }
+                        TextField("Voice ID", text: binding(to: coach.speech, \.voiceID))
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        Toggle("Use Cartesia for routine prompts", isOn: binding(to: coach.speech, \.useCartesia))
-                        Text("The gateway token stays in app memory. Your Cartesia API key belongs on the server.").font(.caption)
-                    }.padding(.top, 6)
+                        TextField("Agent ID", text: binding(to: coach.speech, \.agentID))
+                            .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    }
+                    if coach.session?.phase != .idle, !coach.ended {
+                        Button("Connect Cartesia voice") { coach.connectVoice(); showSettings = false }
+                            .disabled(!coach.voiceConfigured || !coach.voiceEnabled)
+                    }
+                    Button("Try phone voice") {
+                        if coach.session?.phase == .idle { coach.start(usePhoneVoice: true) }
+                        else { coach.usePhoneVoice() }
+                        showSettings = false
+                    }
+                    Text("Phone voice can guide the checks and listen for replies. Open-ended questions need Cartesia.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
-                Toggle("Allow cloud voice questions", isOn: $coach.allowCloudQuestions)
-                    .onChange(of: coach.allowCloudQuestions) { _, allowed in if !allowed { coach.conversation.stop() } }
-                Text("While Q&A is live, microphone audio goes to Cartesia and replies play aloud. No camera feed is uploaded. Use practice data. Questions cannot complete checks. Urgent warnings use the phone's local voice.").font(.caption)
-                if coach.conversation.active {
-                    Button("End voice Q&A") { coach.conversation.stop() }.buttonStyle(.borderedProminent)
-                } else {
-                    Button("Ask a question") { coach.askQuestion() }.buttonStyle(.bordered)
-                        .disabled(!coach.allowCloudQuestions || (coach.session?.phase != .checking && coach.session?.phase != .paused))
-                }
-                Text(coach.conversation.status).font(.caption)
-                if !coach.conversation.transcript.isEmpty { Text(coach.conversation.transcript).font(.callout) }
-                Button("Mute voice now") { coach.speech.stop(); coach.conversation.stop() }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private var bandPanel: some View {
-        GroupBox("Wristband") {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(coach.band.status)
-                Picker("Firmware", selection: binding(to: coach.band, \.protocolMode)) {
-                    Text("Existing fixed patterns").tag(BandProtocolMode.legacy)
-                    Text("PWM intensity v2").tag(BandProtocolMode.intensityV2)
-                }.disabled(coach.session?.phase == .monitoring)
-                HStack {
-                    Button("Connect") { coach.band.connect() }
-                    Button("Disconnect") { coach.band.disconnect() }
-                    Button("Test pulse") { coach.band.set(intensity: 180) }
+                Section("Wristband") {
+                    Text(coach.band.status)
+                    Picker("Installed firmware", selection: binding(to: coach.band, \.protocolMode)) {
+                        Text("Original patterns").tag(BandProtocolMode.legacy)
+                        Text("Variable intensity").tag(BandProtocolMode.intensityV2)
+                    }.disabled(coach.session?.phase == .monitoring)
+                    HStack {
+                        Button("Connect") { coach.band.connect() }
+                        Spacer()
+                        Button("Disconnect") { coach.band.disconnect() }
+                    }
+                    Button("Test vibration") { coach.band.set(intensity: 180) }
                         .disabled(!coach.band.connected || coach.session?.phase == .monitoring)
-                }.buttonStyle(.bordered)
-                Text("Select the firmware actually installed. The motor supports variable intensity; PWM v2 requires the matching firmware update. A band connection does not verify hand hygiene.").font(.caption)
-            }.frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Choose the firmware installed on the band. Variable intensity needs the updated firmware.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section {
+                    DisclosureGroup("Developer tools") {
+                        Button("Camera and depth test") {
+                            coach.backgrounded(); showSettings = false
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showCapture = true }
+                        }
+                        Text(coach.diagnostics).font(.caption.monospaced()).textSelection(.enabled)
+                        ShareLink(item: coach.diagnostics) { Text("Share diagnostics") }
+                        if let url = coach.logURL { ShareLink(item: url) { Text("Share practice log") } }
+                        Text("Practice logs contain event times and categories, without audio, images or your spoken details. Cartesia may retain call records under your account settings.")
+                            .font(.footnote)
+                    }
+                }
+            }.navigationTitle("Voice and wristband")
+                .toolbar { Button("Done") { showSettings = false } }
         }
     }
-
-    // Bind to the child object's mutable field without trying to replace the
-    // coach's immutable reference to that child.
     private func binding<Object: AnyObject, Value>(to object: Object,
-                                                   _ keyPath: ReferenceWritableKeyPath<Object, Value>) -> Binding<Value> {
+                                                  _ keyPath: ReferenceWritableKeyPath<Object, Value>) -> Binding<Value> {
         Binding(get: { object[keyPath: keyPath] }, set: { object[keyPath: keyPath] = $0 })
     }
 }

@@ -2,22 +2,19 @@
 
 Nov 7, 2026 · @e
 
-> Implementation cross-reference (Nov 7, 2026): [DESIGN.md](DESIGN.md) reconciles
-> this proposal with the original design and current firmware. Its current native
-> iPhone plan moves capture, tracking, risk, BLE and audio onto the phone; the Mac
-> pipeline below is an earlier option. It also covers props, collision rules,
-> installation and latency. Monocular overlap is
-> suspected contact rather than confirmed touch, and marker pose does not supply
-> hand depth. The Adafruit motor supports PWM intensity; the updated sketch now
-> adds a separate intensity-v2 characteristic while retaining legacy patterns.
-> The latest source also includes practice routines, Apple hands, a Core ML adapter,
-> BLE and optional dynamic Cartesia voice. No trained protected-part model or
-> clinical protocol is supplied. Read the current routine/voice section of DESIGN
-> alongside this original product proposal; its claims are not implementation results.
+> Current implementation, November 7, 2026: the foreground iPhone app runs camera,
+> LiDAR, RF-DETR, Apple fingertip tracking, proximity rules and Bluetooth locally.
+> Cartesia conversation connects directly from the phone using a key entered once
+> and stored in Keychain. A laptop is needed for development/install, not operation.
+> The trained connector-tip model is included. Printed markers are not required.
+> [DESIGN.md](DESIGN.md) contains the engineering details; [the app guide](ios/ArmGuardCaptureProbe/README.md)
+> contains setup and verification steps. Clinical protocol, real-prop accuracy and
+> physical iPhone warning latency remain unvalidated. Dashboard, scores and clips
+> are future product ideas, not current functionality.
 
 ## Summary
 
-ArmGuard PD warns a home peritoneal dialysis (PD) patient a fraction of a second before their finger touches a sterile connector, and logs every exchange for their PD nurse. A webcam tracks the hands with MediaPipe. An upper-arm band buzzes harder as a fingertip nears the sterile tip. A nurse dashboard scores each patient's technique over time.
+ArmGuard PD is a prototype for spoken guidance and proximity feedback during home peritoneal dialysis (PD) preparation. The current app guides a practice routine, watches fingertips near a detected protected connector tip, and sends variable vibration commands directly to an ESP32 band. Its goal is to help users keep exposed sterile surfaces untouched. It cannot establish sterility, confirm physical contact or certify a clean exchange. Nurse review and clinical benefit remain future validation goals.
 
 Touch contamination is the leading cause of PD peritonitis. Peritonitis is a leading reason patients drop PD for in-center hemodialysis. The tools on the market today detect infection after it starts (effluent turbidity sensors) or train patients before they go home (VR, passive holders). Nothing we found coaches the patient live, during the step where contamination happens.
 
@@ -52,239 +49,276 @@ Today's tools either detect infection after it starts or train patients before t
 
 ## Solution
 
-ArmGuard has three parts: a camera that watches the hands, a band the patient feels, and a dashboard the nurse reads.
+The current prototype has two programmed parts and one external voice service:
 
-- **Vision station:** an iPhone used as the Mac's camera through Continuity Camera, mounted face-down above the work surface. It tracks 21 landmarks per hand and the position of each connector tip, and draws an invisible "no-touch zone" around every sterile tip.
-- **Haptic armband:** worn on the upper arm, above the elbow, so it stays clear of hand washing and the sterile area. It buzzes harder as a fingertip nears a tip and gives a sharp double pulse on contact. One band per arm, so the buzz lands on the arm that's moving.
-- **Audio fallback:** spoken prompts ("Stop. Replace the cap.") for patients who don't wear the band. Audio is the default; the band is an accessibility add-on for patients with hearing or vision loss.
-- **Nurse dashboard:** each exchange gets a technique score, a near-miss count, contact events with a short clip, and steps done out of order. Patients are ranked so the nurse knows who needs retraining or a home visit.
+- **iPhone app:** Swift/SwiftUI on an iPhone 15 Pro, mounted above the work surface.
+  ARKit supplies paired RGB and LiDAR depth. The bundled RF-DETR Small model
+  detects `Hand` and `Sterile_connector_tip`; Apple Vision supplies fingertips.
+- **ESP32 band:** receives numeric intensity commands over Bluetooth and drives
+  the Adafruit motor through the appropriate driver. One band is supported.
+  Fit and test it before hand preparation; placement needs usability testing.
+- **Cartesia conversation:** guides steps, accepts spoken replies and answers
+  questions in the same call. Enter the authorized API key once in the phone's
+  setup; it stays in Keychain. Voice/agent IDs are prefilled. Internet is needed
+  for conversation; no laptop service needs to stay running.
 
-### What a patient's exchange looks like
+Cached Cartesia clips or immediate phone speech handle urgent cues without a
+network round trip. A hosted credential gateway remains an optional future
+architecture for shared app distribution. A nurse dashboard, automatic uploads,
+recorded contact clips, patient ranking and technique scores are not implemented.
 
-1. **Wash and arm up.** The patient washes their hands, the camera checks wash time, then the patient pulls the armband up over the sleeve.
-2. **Set out supplies.** The camera spots the bag, the transfer set and the new cap, and the no-touch zones turn on.
-3. **Uncap and connect.** As a finger drifts within about 3 cm of a tip, the band starts a light buzz that gets stronger closer in. If the patient pulls back, it's logged as a near-miss avoided.
-4. **Contact.** If a finger reaches a tip, the band gives a strong double pulse and the speaker says to stop and follow the clinic's contamination protocol (usually: replace the part, call the PD unit). The event is flagged on the dashboard.
-5. **Drain, flush, fill.** Coaching pauses. The station checks steps happen in order (for example, flush before fill).
-6. **Disconnect and cap.** Zones turn back on for the new sterile cap.
-7. **Summary.** The patient gets a simple score ("Clean exchange" or "1 contact"). The nurse sees the full record.
+### What a practice routine looks like
+
+1. **Set up once.** Install with Xcode, enter the voice key, allow the requested
+   permissions, position the camera and connect/test the optional band.
+2. **Start practice.** Choose an exchange label and start before preparing hands.
+   The labels do not prescribe a daily treatment schedule.
+3. **Prepare through conversation.** Short prompts cover space, bag details, mask,
+   hand preparation and protected openings. Follow the care team's instructions;
+   the app does not verify hand cleanliness, room airflow or prescription values.
+4. **Read back consequential details.** Bag/opening checks require details and a
+   separate spoken confirmation. Questions keep the same check open.
+5. **Connect with monitoring.** Say ready. Monitoring starts only with fresh,
+   clear observations, usable depth, the model and complete two-hand coverage.
+   Near fingers increase vibration. Projected overlap asks the user to pause and
+   review; it is not confirmed touch. A review flag cannot be cleared by resume.
+6. **Continue and practise disconnecting.** The routine includes a second
+   preparation/monitoring window. The bundled model has no cap-interior class;
+   that surface is not covered by the current detector.
+7. **Pause or finish by voice.** Say pause, resume, repeat, read the label or end
+   session. If observations are unavailable, an explicit practice-only skip is
+   recorded as unmonitored, never as a pass. No clean-exchange score is produced.
+
+The bundled routine is a practice scaffold requiring clinical review, not a
+patient-specific dialysis protocol.
 
 ## Hardware bill of materials
 
-The prototype runs on a Mac with an iPhone as the camera (Continuity Camera), plus about $25–45 in parts for the armband. Prices are approximate hobby-store prices. The product later moves to a dedicated embedded camera unit with a depth sensor.
+The runtime setup is an iPhone plus the optional band. The Mac is for build,
+signing, installation and debugging. Original rough component allowances are
+retained below as planning estimates; these have not been re-priced.
 
-| Item | Qty | Purpose | Approx. cost (USD) |
+| Item | Qty | Purpose | Original rough allowance (USD) |
 | --- | --- | --- | --- |
-| Mac (macOS Ventura or later) | 1 | Runs tracking, zone engine, BLE link, audio prompts and the dashboard | have |
-| iPhone (iOS 16 or later) via Continuity Camera | 1 | Overhead camera; shows up as a regular camera on the Mac, no app needed | have |
-| Phone mount, face-down (gooseneck or tripod arm) | 1 | Holds the phone 40–60 cm above the work surface | 10–15 |
-| LED desk lamp or ring light | 1 | Steady lighting, which helps tracking more than a better camera | have / 10 |
-| ESP32 dev board (BLE built in) | 1 per band | Receives buzz commands from the Mac, drives the motor | 6–10 |
-| Adafruit Vibrating Mini Motor Disc | 1–2 per band | The buzz. Not a stepper motor. | 2–10 |
-| Logic-level MOSFET or 2N2222 + flyback diode | 1 per band | Drives the motor disc from a PWM pin; the motor draws more current than a pin can safely supply | 1 |
-| 3.7 V LiPo (500 mAh) + TP4056 charger, or a small USB power bank | 1 per band | Battery power (a coin cell can't handle the ESP32's Bluetooth current spikes) | 8 |
-| Elastic Velcro armband or 3D-printed housing | 1 per band | Mounts on the upper arm | 5 |
-| ArUco marker stickers (printed) | 4–6 | Reliable tracking of each connector tip | \~0 |
-| Plain matte mat | 1 | Plain background so hands stand out | have |
-| PD training kit: mock transfer set, caps, water-filled bags | 1 set | Realistic props, never used on a person | borrow from a PD unit or mock with IV tubing |
+| iPhone 15 Pro | 1 | Runs the app, rear RGB/LiDAR, model, speaker and Bluetooth | have |
+| Mac with full Xcode | development only | Build/sign/install; can be closed after installation | have |
+| Stable overhead mount | 1 | Holds the phone in a repeatable view; validate working distance on props | 10–15 |
+| Steady desk lighting | 1 | Reduce blur/glare on hands and connector | have / 10 |
+| BLE-capable ESP32 | 1 | Receives commands directly from iPhone; ESP32-S2 has no Bluetooth | 6–10 |
+| Adafruit Vibrating Mini Motor Disc | 1–2 | Variable intensity through PWM and a driver | 2–10 |
+| Suitable motor driver/transistor and flyback diode | 1 | Keep motor current off the GPIO | 1 |
+| Compatible battery/charger or USB power bank | 1 | Power the band; verify with the assembled hardware | 8 |
+| Strap/housing | 1 | Mount the band clear of the work area | 5 |
+| Matte work surface | 1 | Consistent background | have |
+| Dry disconnected mock connectors, caps and mock bag label | 1 set | Prop and routine tests; never patient-connected | borrow / mock |
+| Printed markers | optional alternative only | A separate calibrated marker demo; not used by the bundled detector | ~0 |
 
-**Software stack:** Python on the Mac with OpenCV (camera capture and ArUco), MediaPipe Hands, `bleak` for BLE to the ESP32, macOS `say` or pre-recorded clips for audio, SQLite for the event log, and Flask or FastAPI for the dashboard. The ESP32 runs Arduino with NimBLE and a PWM output to the motor.
+**Software:** Swift/SwiftUI, ARKit, Core ML, Vision, CoreBluetooth and AVFoundation
+on the phone; Cartesia Managed Agents/TTS over HTTPS/WSS; Arduino firmware on the
+ESP32. Python is used for development/export and the optional hosted gateway,
+not for the phone's live camera loop.
 
-**Camera setup:** turn on Continuity Camera, lock exposure and focus if the app allows it, use the 0.5× ultra-wide lens if the mount is close, and keep the phone plugged in, since it runs hot during long sessions.
+**Camera setup:** use the app's rear RGB/LiDAR capture, portrait orientation, a
+stable mount and a view of both hands plus the protected tip. Test depth quality,
+lighting, motion and sustained heat on actual props. Continuity Camera and a
+Record3D purchase are not required.
 
 ## System architecture
 
-Each camera frame runs through tracking and a zone engine on the Mac, which sets the buzz level live and writes events for the nurse.
+```text
+iPhone ARKit RGB + depth
+  -> RF-DETR protected tip/hand boxes + Apple Vision fingertips
+  -> registered proximity + routine/readiness/review gates
+  -> CoreBluetooth -> ESP32 -> motor PWM
+  -> immediate local audio/display + local practice-event log
 
-&#91;embedded content: ArmGuard architecture · live loop and nurse log\]
-
-The armband is the only part that needs to be fast; the dashboard can update after the exchange.
+iPhone microphone <-> Cartesia conversation over internet
+  -> native get-state / respond-to-check tools
+  -> guarded routine progress
+```
 
 ### Vision pipeline
 
-- **Hands:** MediaPipe Hands gives 21 landmarks per hand. Use the fingertips (landmarks 4, 8, 12, 16, 20) plus the thumb and index pads, since those are what touch connectors.
-- **Connector tips:** an ArUco marker on each prop gives its pose. The sterile tip is a fixed offset from the marker, measured once per prop. Later, swap the markers for a trained detector.
-- **Depth:** a single camera gives 2D. Use the marker's known size to estimate scale and the hand's apparent size for rough depth. For the demo, a top-down camera makes 2D distance close enough. An Intel RealSense or an iPhone LiDAR feed is an upgrade.
-- **Zones:** each sterile tip gets a warning radius (about 3 cm) and a contact radius (about 0.8 cm). Distance inside the warning radius maps to buzz intensity. Starting values; tune them on the props.
-- **Debounce:** contact fires only after 3 frames in a row inside the contact radius, about 100 ms at 30 fps, to cut false alarms from tracking jitter.
-- **Phase state machine:** idle → hands washed → supplies detected → connect (zones on) → drain/flush/fill (zones paused) → disconnect (zones on) → summary.
+- **Model:** bundled RF-DETR Small, 512 px, 300 queries. Class 0 is reserved,
+  class 1 is `Hand`, class 2 is `Sterile_connector_tip`. The export explicitly
+  records logits, normalized cxcywh boxes, output names and class roles.
+- **Hands:** whole-hand boxes are shown, while Apple Vision tracks fingertips.
+  Whole-hand centroids are not substituted for finger-to-opening clearance.
+- **Preprocessing:** rotate to portrait, resize, convert RGB/ImageNet-normalized
+  NCHW input, and reuse tensor storage. Decode logits with sigmoid, exclude the
+  reserved slot and clip valid off-frame boxes at the image boundary.
+- **Geometry:** compare fingertips with the nearest projected protected-region
+  boundary, then unproject usable depth samples. Mixed/invalid depth is unknown.
+  Overlap requests review; sampling the same overlapped depth pixel twice would
+  not establish zero physical separation.
+- **Coverage:** cap interiors, clothing, other body parts, floor/table collisions
+  and valid mating-pair exceptions are not implemented by this model.
+- **Image-scale alternative:** kept as diagnostic code without an assumed physical
+  size. The earlier 10 mm tip placeholder does not produce metric alerts.
 
-### Latency budget (target under 150 ms, finger to buzz)
+### Latency and evidence
 
-These are estimates to check against measurements during the hackathon.
+The under-150-ms finger-to-buzz figure is a goal, not a measured result. Current
+software requests 30 fps where available, accepts at most 15 inference frames/s
+with one in flight, drops busy frames, and previews at up to 10 Hz. Observations
+older than 250 ms are unusable; a 100 ms health check also detects stalls.
 
-| Stage | Estimate |
-| --- | --- |
-| Camera frame capture at 30 fps | up to 33 ms |
-| MediaPipe Hands + ArUco on the Mac | 15–30 ms |
-| Zone math + debounce decision | under 2 ms (contact debounce adds about 66 ms) |
-| BLE write to ESP32 (short connection interval) | 10–30 ms |
-| Motor spin-up (ERM; an LRA is faster) | 20–50 ms |
+Model work, speech/network and logging do not block the camera delegate. Hazard
+feedback does not wait for the conversational agent. Voice clips are preloaded;
+phone speech is the immediate fallback. The parallel image-scale alert timer
+was removed so it cannot restart vibration during pause or outside monitoring.
 
-Measure it end to end: film the finger and the band with a phone in slow motion and count the frames between them.
+| Verification | Current evidence | Still needed |
+| --- | --- | --- |
+| Logic and API setup | 26 core + 13 gateway/setup checks pass | Device behavior |
+| Swift source | 15 files type-check against Apple Catalyst frameworks | Full iPhone build/sign/install |
+| Actual model | Mac compile/load, RGB/rotation/normalization, inference/decoding pass | Real-prop photo accuracy and phone performance |
+| Processing timing | 187.4 ms warm Mac CPU on a generated pattern | Phone distributions, heat and physical end-to-end timing |
+| Direct voice | Native HTTPS speech/session creation and WSS audio pass without laptop gateway | Phone microphone, echo, interruption and recovery tests |
+
+Measure finger motion through motor/audio onset with an independent high-speed
+recording. Report misses, false alerts, stale intervals and sustained-session
+results, not just inference time or camera frame rate.
 
 ### Haptic protocol
 
-- **Warning:** continuous buzz, PWM duty 20–100% scaled by distance, refreshed every frame.
-- **Contact:** two 150 ms full-strength pulses, 100 ms apart.
-- **Message:** one byte for the mode plus one byte for intensity, written to a BLE characteristic. The band stops on its own if no update arrives within 300 ms, so it never gets stuck buzzing.
+The Adafruit motor supports variable intensity. The selected firmware must match
+its actual installation; the app defaults to legacy compatibility.
+
+- Device name `DialysisBand`, service `7a1e0001-3c5d-4b8a-9f21-6d2c8e4b1a00`.
+- Legacy command characteristic `...0002`: existing ASCII commands; app uses
+  `W`, `E`, `S` for warning/review/off.
+- Intensity-v2 characteristic `...0003`: `[mode, duty]`; mode 0 off, 1 proximity,
+  2 review cue, duty 0–255. The app's test uses a short mode-1 command. No mode 3.
+- Desired commands expire after 250 ms. V2 refreshes every 100 ms; firmware stops
+  after 300 ms without refresh and on disconnect. Reconnect starts off and is explicit.
+- Neither supplied sketch implements the original proposed two-pulse contact
+  pattern. The alternate `vibration_band` sketch pulses mode 1 and drives mode 2
+  continuously at the supplied duty; the original sketch applies duty directly.
 
 ### Event data model
 
-| Field | Example |
-| --- | --- |
-| exchange\_id | uuid per exchange |
-| patient\_id | pseudonymous id |
-| t | ms since exchange start |
-| type | near\_miss, contact, step\_out\_of\_order, wash\_short |
-| tip | transfer\_set, new\_cap, bag\_port |
-| min\_distance\_cm | 1.2 |
-| hand | left / right |
-| clip\_ref | file id of a 5 s clip (contact only) |
+Current local practice logs contain only these fields:
 
-**Technique score per exchange:** start at 100, subtract 25 for each contact, 5 for each near-miss and 10 for each step out of order. The weights are placeholders for a PD nurse to set.
+| Field | Meaning |
+| --- | --- |
+| `kind` | Start, recorded check, pause, monitoring state, skip, overlap review or finish |
+| `checkID` | Associated practice check, if any |
+| `timestamp` | Event time |
+| `evidence` | Self-report, experimental observation, unavailable/unmonitored category |
+
+No raw voice, read-back text, images, contact clips, patient ranking or clinical
+technique score is saved in these logs. Export is manual. Cartesia processes
+microphone audio during an opted-in call and may retain cloud call records under
+the account's settings; camera/depth processing stays local.
 
 ## Software specification
 
-One Python process on the Mac runs the live loop. The ESP32 only obeys buzz commands and shuts itself off if commands stop. The dashboard reads the same SQLite file in a separate process.
+The iPhone foreground app owns capture, inference, routine state, feedback and
+local events. The ESP32 receives motor commands. A laptop server is optional,
+not required for operation; a future hosted gateway could protect shared keys
+when distributing beyond personal testing.
 
-### Repo layout
+### Implemented files
 
 ```text
-armguard/
-  main.py              # starts threads, runs the frame loop
-  config.yaml          # all thresholds, marker offsets, BLE ids
-  vision/capture.py    # OpenCV capture from Continuity Camera
-  vision/hands.py      # MediaPipe wrapper -> fingertip pixels per hand
-  vision/markers.py    # ArUco -> sterile tip pixels + px_per_cm
-  engine/zones.py      # distance, buzz intensity, debounce, hysteresis
-  engine/phases.py     # exchange state machine
-  engine/events.py     # event objects + technique score
-  haptics/ble.py       # bleak client, latest-command-wins queue
-  audio/prompts.py     # macOS `say` or wav clips
-  store/db.py          # SQLite writes on a background queue
-  dashboard/app.py     # FastAPI + one HTML page
-  overlay.py           # debug window: hands, tips, zones, fps, latency
-firmware/armband/armband.ino
-tests/                 # pytest, synthetic distance traces
+ios/ArmGuardCaptureProbe/ArmGuardCaptureProbe/
+  CaptureController.swift       # ARKit RGB/depth and freshness
+  CoachVisionPipeline.swift     # model + Apple hand pose + depth observations
+  RFDETRDetector.swift          # input preparation and raw tensor adapter
+  SterileParts.mlpackage/       # trained model, compiled by Xcode
+  CoachViewModel.swift          # routine/vision/voice/band coordination
+  RoutineCoachView.swift        # spoken-step UI and setup
+  CoachSpeech.swift             # direct TTS, cached alerts, fallback, Keychain
+  CartesiaConversation.swift    # streaming audio, interruptions and native tools
+  BandClient.swift              # current expiring Bluetooth command
+  Resources/RoutineTemplate.json
+  Resources/VoiceInstructions.txt
+Core/Sources/CaptureProbeCore/
+  RoutineEngine.swift
+  ProximityEngine.swift
+  CartesiaProtocol.swift
+firmware/wristband/wristband.ino
+firmware/vibration_band/vibration_band.ino
+scripts/check-ios-app.sh
+scripts/check-rfdetr-model.swift
+scripts/export_rfdetr_coreml.py
+services/voice_gateway/          # optional hosted/dev route and agent creation
 ```
 
-### Frame loop (main thread, every frame)
+### Runtime rules
 
-1. **Capture:** a capture thread keeps only the newest frame (no backlog). Find the Continuity Camera's device index once at startup and save it in config.
-2. **Hands:** MediaPipe Hands, `max_num_hands=2`, model complexity 0 for speed. Keep fingertip landmarks 4, 8, 12, 16, 20 per hand.
-3. **Markers:** detect ArUco markers (`DICT_4X4_50`). For each marker id, the sterile tip = marker center + an offset in cm, rotated by the marker's angle (offsets in config). Scale: `px_per_cm = marker_side_px / marker_side_cm`, averaged over the visible markers.
-4. **Distance:** for each active tip, `d_cm` = smallest fingertip-to-tip distance in pixels ÷ px\_per\_cm. Remember which hand it was.
-5. **Zones:** turn `d_cm` into buzz mode + intensity (rules below).
-6. **Outputs:** push the newest command to the BLE queue; trigger audio on a contact; queue events for the database.
-7. **Overlay:** draw everything plus fps and per-stage timings (`time.perf_counter()`).
+| Rule | Current implementation |
+| --- | --- |
+| Warning band | Experimental 50 mm depth-based boundary clearance; intensity rises as estimated gap falls |
+| Contact | No contact-radius proof or clinical contamination classification; projected overlap requests sticky review |
+| Depth validity | Reject mixed patches over 20 mm spread and regions smaller than two depth pixels |
+| Arming | Loaded model, fresh clear observations, protected region, usable depth and complete two-hand coverage |
+| Missing observations | Pause monitoring, stop/expire vibration, speak loss cue; no automatic rearm |
+| Pause/review | No parallel alert source may bypass routine state or clear a review flag |
+| Releases | Require 300 ms observed separation before releasing a near warning |
+| Audio | Urgent cues interrupt conversation; repetition cooldown limits queued speech |
+| Conversation tools | Get state or consume the actual latest user reply once for its current check |
+| Clinical choices | Follow the care team's instructions; no configured prescription validation or recovery treatment |
 
-### Zone rules
+### Routine structure
 
-| Rule | Starting value | Behavior |
-| --- | --- | --- |
-| Warning radius `warn_cm` | 3.0 cm | Outside it the motor is off |
-| Contact radius `contact_cm` | 0.8 cm | Inside it for N frames = contact |
-| Debounce `contact_frames` | 3 frames | Stops tracking jitter from causing false contacts |
-| Contact exit hysteresis | +0.5 cm | Contact clears only once `d_cm > contact_cm + 0.5` |
-| Intensity curve | linear | `i = (warn_cm - d) / (warn_cm - contact_cm)`, scaled to PWM 0–255, minimum 70 so the motor actually spins |
-| Near-miss | min d < 1.5 cm | Finger entered the warning zone, got within 1.5 cm, and left without contact |
-| Tracking lost | > 300 ms | Hand or tip disappears while inside the warning zone: show it on screen, no buzz, log `tracking_lost` |
-| Command rate | at most every 33 ms | Send only when the mode changes or intensity moves by more than 10 |
+Room preparation → bag read-back → mask → hand preparation → protected-opening
+read-back → connection monitoring → instructed exchange steps → new preparation
+→ disconnection monitoring → review. Bag/opening checks require separate spoken
+confirmation. Other completion replies are self-reports. Questions stay in the
+same conversation. Four exchange labels are placeholders, not a prescribed schedule.
 
-All values live in `config.yaml` so they can be tuned without code changes.
+The app is foreground-only. Backgrounding pauses it; returning requires explicit
+voice resumption, and monitoring must be rearmed with fresh observations.
 
-### Exchange phases
+## Build and validation plan
 
-For the hackathon, phases move forward with keyboard keys (space = next phase), so a detection bug can't stall the demo. Detecting phase changes automatically is a stretch goal.
+The model and voice integration are implemented, with no new commit made by the
+integration work. The next milestones require the actual phone and band:
 
-| Phase | Zones | Advance on |
-| --- | --- | --- |
-| IDLE | off | space |
-| WASH | off | space (stretch: hands-in-frame timer of at least 20 s) |
-| SETUP | off | all required markers visible |
-| CONNECT | on: transfer set tip, bag line tip | space |
-| THERAPY (drain, flush, fill) | off | space |
-| DISCONNECT | on: transfer set tip, new cap | space |
-| SUMMARY | off | write score; press space to reset to IDLE |
-
-### BLE protocol (Mac → ESP32)
-
-- The ESP32 advertises as `ArmGuard-R` or `ArmGuard-L` with one custom service and one write-without-response characteristic. Generate your own UUIDs with `uuidgen` and put them in config and firmware.
-- **Payload:** 2 bytes, `[mode, intensity]`. Mode 0 = off, 1 = warn (intensity 0–255), 2 = contact pattern (intensity ignored), 3 = test buzz.
-- **Firmware:** mode 1 sets PWM duty with `ledcWrite`; mode 2 plays two 150 ms full pulses 100 ms apart, then waits for the next command. A watchdog turns the motor off if nothing arrives for 300 ms. The onboard LED mirrors the motor, which makes latency testing easier.
-- **Mac side:** `bleak` runs in its own asyncio thread. The queue keeps one slot, and new commands overwrite old ones so stale buzzes never pile up. If the band disconnects, reconnect automatically and show "band offline" on the overlay.
-
-### Storage and dashboard
-
-- **Tables:** `exchanges(id, patient_id, started_at, ended_at, score)` and `events(id, exchange_id, t_ms, type, tip, min_distance_cm, hand, clip_ref)`. The event types match the data model above.
-- **Clips:** keep a 5 s ring buffer of frames; on a contact, save the last 3 s plus 2 s after it as an mp4.
-- **API:** `GET /api/patients`, `GET /api/exchanges?patient_id=`, `GET /api/exchanges/{id}` (events + clip links). The page polls every 2 s, so websockets aren't needed.
-- **Demo data:** seed 3 fake patients with a week of exchanges so the patient list looks real next to the live one.
-
-## Hackathon build plan
-
-The plan assumes a 4-person team and a 24–36 hour event, and gets to a working end-to-end loop by hour 12 so the rest of the time goes to polish. Adjust the roles if the team is smaller.
-
-| Role | Owns | Done when |
-| --- | --- | --- |
-| CV lead | MediaPipe Hands, ArUco tip tracking, zone math, event detection | Fingertip-to-tip distance is stable at 30 fps on the demo props |
-| Hardware lead | ESP32 firmware, motor driver, BLE, armband housing | Band responds to intensity commands in under 50 ms |
-| Backend / dashboard | Event log, technique score, nurse dashboard UI | A finished exchange shows up scored on the dashboard |
-| Pitch + clinical | Research, demo script, slides, PD protocol accuracy, judge Q&A | Story is tight and the demo is rehearsed 5+ times |
-
-### Milestones
-
-- [ ] **Hours 0–4:** hand tracking on webcam; ArUco markers on the mock cap and transfer set; ESP32 buzzing over BLE from a Python script
-- [ ] **Hours 4–12:** distance-to-zone mapped to buzz strength; contact event fires; events written to a local database. **First end-to-end loop.**
-- [ ] **Hours 12–20:** dashboard with per-exchange score and near-miss timeline; audio prompts; step-order checks
-- [ ] **Hours 20–28:** latency tuning and measurement; false-alarm tuning; armband housing; a short clip saved for each contact
-- [ ] **Final hours:** rehearse demo, record a backup video, finish slides
-
-**Cut list if behind:** step-order checks, clips, the second band. Never cut the live buzz, which is the whole demo.
-
-## Testing stages
-
-Test from the bottom up: pure logic first, then each part on its own, then the full loop with props. Don't move to the next stage until the current one passes. Thresholds are starting targets; write down what you actually measure.
-
-| Stage | What to test | How | Pass when | Result |
-| --- | --- | --- | --- | --- |
-| 0. Logic | Intensity curve, debounce, hysteresis, near-miss, scoring, phase transitions | pytest feeding synthetic `d_cm` traces (approach then retreat, jitter around 0.8 cm, dropouts) | All tests pass; a jitter trace never fires a contact |  |
-| 1a. Camera | Frame rate and delay from Continuity Camera | Log fps; point the camera at a phone stopwatch next to the Mac screen and compare | 25 fps or more at 1280×720 |  |
-| 1b. Hands | Fingertip jitter | Hold a hand still for 10 s and log fingertip position | Std dev under 0.3 cm |  |
-| 1c. Markers | Detection and scale | Props under demo lighting; measure a known distance with a ruler | Markers found in at least 95% of frames; scale error under 10% |  |
-| 1d. Band | BLE link and firmware | Script that runs each mode; kill the script mid-buzz; power-cycle the band | Every mode works; motor stops within 300 ms of the script dying; reconnects in under 5 s |  |
-| 2. Distance accuracy | Measured vs true fingertip-to-tip distance | Printed grid; fingertip at 0, 1, 2, 3 and 5 cm from the tip, 5 times each | Error under 0.5 cm inside 3 cm |  |
-| 3. End-to-end latency | Finger enters the zone → motor starts | 240 fps phone slow-motion video of finger, overlay and band LED; count frames; 20 trials | Median under 150 ms; worst case under 250 ms |  |
-| 4. Scripted trials | Detection accuracy | 20 clean exchanges, 20 deliberate near-misses, 20 deliberate contacts by 2+ teammates; label each from video | Contacts caught 18/20 or better; at most 1 false contact per 5 clean exchanges; near-misses logged 16/20 or better |  |
-| 5. Robustness | Conditions that break CV | Repeat a short stage 4 run with dim light, bright window light, long sleeves, both hands crossing, fast movements, a marker half covered | No false contacts; any tracking loss is shown on screen |  |
-| 6. Dashboard | Data comes through correctly | Compare stage 4 video labels against what the dashboard shows | Counts match; contact clips play |  |
-| 7. Demo rehearsal | The whole script under stage conditions | Run the demo script 5 times on the presentation table; record a backup video | 5 clean runs in a row |  |
-
-**Tune between stages:** if stage 2 or 4 fails, adjust `warn_cm`, `contact_cm`, `contact_frames` and the marker offsets in config, then rerun stage 0 so the logic tests still pass.
+1. Build/install the updated app using the owner's existing Xcode team settings.
+2. Enter the Cartesia key once on the phone, test natural replies, questions,
+   interruptions and recovery, and verify operation after closing the Mac.
+3. Check boxes/fingertips against real mock connectors and confirm the model
+   detects exposed tips rather than nearby packaging or the whole connector.
+4. Test depth and coverage at the intended mounting distance; label occlusions,
+   hovering, fast approaches, rotation, skin tones/gloves, glare and dim light.
+5. Verify the selected firmware, variable duty, stop/disconnect and watchdog on
+   the actual band. Measure physical warning latency over sustained operation.
+6. Review routine wording and surface definitions with PD clinicians before
+   considering patient use. Dashboard, scores and automatic checks stay future work.
 
 ## Demo script (3 minutes)
 
-The moment judges remember is a finger drifting toward the cap, the armband buzzing harder, the hand pulling back, and the dashboard logging "near-miss avoided."
+Use disconnected training props and the current app; describe limitations directly.
 
-1. **Hook (20 s).** "Meet a 78-year-old on home dialysis, 14 months in, with diabetic retinopathy. One touch on this connector tip can put her in the hospital and end home dialysis for good. Touch contamination is the leading cause."
-2. **Clean run (40 s).** A teammate wearing the band does an exchange with the mock kit. The dashboard shows the no-touch zones live over the camera feed.
-3. **Near-miss (30 s).** The teammate drifts a finger toward the cap. The buzz builds and they pull back. Point at the near-miss entry on the dashboard.
-4. **Contact (30 s).** The teammate touches the tip. Double pulse, spoken prompt, red event with a clip on the dashboard.
-5. **Nurse view (30 s).** Switch to the patient list: one patient flagged for retraining after three near-misses this week. "One nurse can supervise a whole panel this way, without driving to each house."
-6. **Close (30 s).** Who pays and why (next section), what's next (a pilot with a PD unit), and the measured buzz latency.
+1. **Setup:** show the phone on its mount and a connected/tested band. Close the
+   development laptop to demonstrate standalone operation.
+2. **Conversation:** start practice, answer a prompt, ask a question and confirm
+   that the question does not advance the check. Demonstrate bag read-back.
+3. **Approach:** at an armed connection step, show the detected tip and fingertips;
+   approach slowly and retreat as vibration/audio warn. Describe the depth gap as
+   experimental, not proof of safety.
+4. **Uncertainty:** hide a hand or interrupt the camera; show monitoring pause and
+   motor shutoff. Resume requires fresh readiness. A projected overlap requests
+   review rather than claiming confirmed contact.
+5. **Finish:** show the local practice-event log and distinguish it from a future
+   nurse dashboard. Present only measured device results; do not display a
+   cleanliness score or a fabricated contact count.
 
-**Backup:** a recorded video of the full run, in case the lighting or the BLE connection fails on stage.
+Keep a recorded rehearsal as a backup. Hardware demonstrations remain contingent
+on passing the phone/prop/band tests above.
 
 ## Business case
 
-Dialysis providers pay because ArmGuard lets one nurse supervise many more home patients and keeps those patients on PD. The armband is an add-on; the moat is the technique data.
+The proposed buyer is a dialysis provider. The business hypothesis is that usable coaching and eventual clinician review could support home care. Nurse workload, clinical benefit, willingness to pay and outcome effects are not established by this prototype; the dashboard and technique-data product remain future work.
 
 - **Customer:** home dialysis programs at dialysis providers and hospital-based PD units. Patients use it; the program buys it.
 - **Value to the buyer:**
-  - Fewer peritonitis episodes means fewer hospital stays and fewer patients transferring to in-center hemodialysis.
-  - Nurse time: a technique audit and retraining check happens remotely, after every exchange, instead of only at a home or clinic visit.
-  - It widens the pool of patients who can do PD at all. Patients whose vision, dexterity or cognition is borderline, who would otherwise need a caregiver or a paid assisted-PD nurse, get a safety net. The ISPD position paper on assisted PD calls for expanding assisted PD internationally.
+  - Hypothesized outcome to study: fewer peritonitis episodes would mean fewer hospital stays and fewer patients transferring to in-center hemodialysis.
+  - Future nurse workflow: a technique audit and retraining check happens remotely, after every exchange, instead of only at a home or clinic visit.
+  - Future hypothesis: it could widen the pool of patients who can do PD at all. Patients whose vision, dexterity or cognition is borderline, who would otherwise need a caregiver or a paid assisted-PD nurse, get a safety net. The ISPD position paper on assisted PD calls for expanding assisted PD internationally.
 - **Who to start with:** new PD starts (first 90 days, while training is fresh and dropout risk is high), patients with a past peritonitis episode, and assisted-PD programs.
 - **Pricing hypothesis:** a per-patient monthly subscription covering the station, the band and the dashboard. Price it against the cost of one avoided peritonitis admission per panel of patients. The actual numbers need validation with a provider.
 - **Go-to-market:** a pilot at one PD unit (Duke's home dialysis program is an obvious first conversation), run as a technique-audit study, then pitch the results to large dialysis providers.
@@ -298,21 +332,21 @@ The biggest open question is unproven: does live coaching cut peritonitis more t
 | --- | --- |
 | "This is easy to do manually." | For a 45-year-old on day one, yes. Our users are 78, have retinopathy, and are 14 months in. Contamination is invisible until infection shows up. |
 | "Patients take off watches and bracelets before washing their hands." | That's why the band goes on the upper arm, after washing and clear of the sterile area. Audio is the default for patients who don't want a band. |
-| "A camera in someone's home is a privacy problem." | It runs only during an exchange and points down at the work surface. Processing happens on the device, and only events and short clips of contacts are uploaded, with consent. |
-| "False alarms will annoy patients until they turn it off." | Zones are tuned per tip, a buzz needs several frames in a row to fire, and the near-miss buzz is gentle. Measure the false-alarm rate in testing and show it. |
+| "A camera in someone's home is a privacy problem." | It runs only during an exchange and points down at the work surface. Camera/depth/model processing stays on the phone. Opted-in microphone audio goes to Cartesia. Practice events stay local unless manually exported; no automatic clips or uploads exist. |
+| "False alarms will annoy patients until they turn it off." | False-alert rate and burden still need measurement. Usable near-risk observations warn immediately; cooldowns limit repeated speech. Unknown tracking pauses monitoring instead of claiming clearance. |
 | "Big players already have patents." | Fresenius has a hand-cleanliness scanning patent. Before going past the hackathon, do a freedom-to-operate search on live connection monitoring. |
-| "Lighting and camera angles break CV." | Fixed overhead mount, ArUco markers on props for the prototype, and an on-screen check that the hands are tracked before the exchange starts. |
-| "Older patients won't charge another device." | The band is optional; it charges on a dock beside the station, which flags a low battery. |
+| "Lighting and camera angles break CV." | Use a fixed overhead mount, the bundled RF-DETR model and readiness checks for hands, protected region, depth and freshness. Printed markers are only an alternative demo path. |
+| "Older patients won't charge another device." | The band is optional. Charging, enclosure and battery-state feedback still need hardware validation; a charging dock is not implemented. |
 
-**Other risks:** we have no real exchange footage to train on (stage it with a training kit, then partner with a PD unit); hand tracking may fail with gloves or tremor (test it); clinic contamination protocols vary (make the prompts configurable per clinic).
+**Other risks:** a trained tip/hand model is bundled but real-exchange generalization has not been established (stage consented training-kit footage, then review with a PD unit); hand tracking may fail with gloves or tremor (test it); clinic contamination protocols vary (make the prompts configurable per clinic).
 
 ## Future work and validation
 
 The next step after the hackathon is a usability and accuracy study with a PD unit, before any outcome claim.
 
-1. **Bench accuracy:** measure contact detection against labeled video of staged exchanges, reporting sensitivity, false alarms per exchange and buzz latency.
+1. **Bench accuracy:** compare detections, proximity warnings and overlap flags with independently labeled staged footage. Report misses, false alerts, unknown cases and physical warning latency; do not equate image overlap with contact.
 2. **Usability with PD nurses and patients:** can patients over 70 set it up alone? Does the buzz help or startle? Use the hand-tracked VR training study as a model for the protocol.
-3. **Connector detection without markers:** train a small detector on real transfer sets and caps, using footage collected with consent.
+3. **Broader protected surfaces:** validate the bundled marker-free connector-tip model on actual props, then add cap-interior or other collision classes only with appropriate training and evaluation.
 4. **Pilot:** new PD starts at one unit, measuring technique scores over time, retraining visits needed and peritonitis rate against past rates.
 5. **Product extensions:** an AR headset version that highlights the no-touch zone in view; integration with cycler remote-monitoring platforms; a version for home hemodialysis cannulation.
 

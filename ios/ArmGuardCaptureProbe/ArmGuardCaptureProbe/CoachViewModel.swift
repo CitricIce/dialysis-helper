@@ -23,6 +23,9 @@ final class CoachViewModel: ObservableObject {
     private var clearSince: Double?
     private let logQueue = DispatchQueue(label: "org.armguard.coach.events", qos: .utility)
     private var runID = UUID()
+    private var lastRiskLevel: RiskLevel = .none
+    private var lastRiskSpeech = -Double.infinity
+    private let haptics = UINotificationFeedbackGenerator()
 
     init() {
         do {
@@ -42,12 +45,27 @@ final class CoachViewModel: ObservableObject {
                           band.objectWillChange.eraseToAnyPublisher(), conversation.objectWillChange.eraseToAnyPublisher()] {
             publisher.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
         }
-        health = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.checkHealth() }
+        health = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.driveRiskAlerts()
+            self?.checkHealth()
+        }
     }
 
     var fresh: Bool {
         let age = ProcessInfo.processInfo.systemUptime - observation.receipt
         return capture.isRunning && observation.receipt > 0 && age >= 0 && age <= 0.25
+    }
+    /// MEDIUM/HIGH warning from the scale-reference (SPINOSAURUS) method.
+    /// Holds for up to 0.5 s between vision results; drops to none if the camera stalls.
+    var riskLevel: RiskLevel {
+        let age = ProcessInfo.processInfo.systemUptime - observation.receipt
+        guard capture.isRunning, observation.receipt > 0, age >= 0, age <= 0.5 else { return .none }
+        return observation.scaleRisk
+    }
+    var scaleText: String {
+        let scale = observation.mmPerPixel.map { String(format: "%.3f mm/px", $0) } ?? "NA"
+        let distance = observation.distanceMM.map { String(format: "%.0f mm", $0) } ?? "NA"
+        return "scale=\(scale)  dist=\(distance)  hands=\(observation.fingertips.count) tips / \(observation.hands.count) boxes  sterile=\(observation.regions.count)"
     }
     var canArm: Bool {
         guard fresh, observation.modelInstalled, observation.handCoverageComplete,
@@ -196,8 +214,33 @@ final class CoachViewModel: ObservableObject {
         message = reason
         speech.speak(reason, urgent: true)
     }
+    /// Sends the current warning to the wristband and alerts on the phone.
+    /// BandClient commands expire after 250 ms, so this runs every frame and every 100 ms;
+    /// when the risk clears the band switches itself off.
+    ///   MEDIUM -> legacy 'W' / v2 [1, 160]   (firmware: pulsing)
+    ///   HIGH   -> legacy 'E' / v2 [2, 255]   (firmware: continuous)
+    private func driveRiskAlerts() {
+        let level = riskLevel
+        switch level {
+        case .high: band.set(intensity: 255, suspected: true)
+        case .medium: band.set(intensity: 160)
+        case .none: break
+        }
+        if level != lastRiskLevel { objectWillChange.send() }
+        if level > lastRiskLevel {
+            haptics.notificationOccurred(level == .high ? .error : .warning)
+            let now = ProcessInfo.processInfo.systemUptime
+            if level == .high, now - lastRiskSpeech >= 4 {
+                lastRiskSpeech = now
+                speech.speak("Too close to the sterile tip. Move your hand away.", urgent: true)
+            }
+        }
+        lastRiskLevel = level
+    }
     private func received(_ output: CoachVisionSnapshot) {
         observation = output
+        // Runs after the monitoring logic below so its band commands cannot cancel a warning.
+        defer { driveRiskAlerts() }
         if !output.labelText.isEmpty { scannedLabel = output.labelText }
         guard session?.phase == .monitoring else { return }
         guard fresh else { loseObservation("Vision is delayed. Monitoring paused; restore the view before rearming."); return }

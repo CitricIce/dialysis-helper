@@ -102,3 +102,113 @@ public enum BandEncoding {
         return [suspected ? 2 : (intensity > 0 ? 1 : 0), intensity]
     }
 }
+
+// MARK: - Scale-reference proximity (ported from SPINOSAURUS.py)
+//
+// Same method as the tumor/nerve script:
+//   1. mm-per-pixel comes from an object of known physical size (there: the 3 mm
+//      tumor; here: the sterile catheter tip), smoothed with an EMA.
+//   2. Distance = pixels from the hand to the CLOSEST EDGE of the protected
+//      region (cv2.pointPolygonTest), converted to mm and EMA-smoothed.
+//   3. Two thresholds give MEDIUM and HIGH risk.
+// Difference from the script: a hand point inside the sterile region counts as
+// 0 mm (the script's abs() would report the distance to the edge instead).
+
+public enum RiskLevel: Int, Comparable {
+    case none = 0, medium, high
+    public static func < (lhs: RiskLevel, rhs: RiskLevel) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
+public struct ScaleProximityMeasurement: Equatable {
+    /// Closest hand-to-surface gap in image pixels (0 = overlapping in the image).
+    public let distancePixels: Double
+    /// Size in pixels of the reference sterile tip (largest detected tip).
+    public let referencePixels: Double
+    /// Normalized sensor-space endpoints of the closest gap, for drawing.
+    public let handPoint: SensorPoint
+    public let surfacePoint: SensorPoint
+}
+
+public enum ScaleProximity {
+    /// - Parameters: all points/boxes in normalized sensor space; image size in pixels.
+    /// Fingertips are preferred. Whole-hand boxes are used only when no fingertip is visible.
+    public static func measure(fingertips: [SensorPoint], hands: [ProtectedRegion], regions: [ProtectedRegion],
+                               imageWidth: Double, imageHeight: Double) -> ScaleProximityMeasurement? {
+        let regions = regions.filter(\.isValid)
+        guard imageWidth > 0, imageHeight > 0, !regions.isEmpty else { return nil }
+        // Reference: the largest sterile tip (the script picked the largest tumor polygon).
+        guard let reference = regions.max(by: { $0.width * $0.height * imageWidth * imageHeight
+                                                 < $1.width * $1.height * imageWidth * imageHeight }) else { return nil }
+        let referencePixels = max(1, max(reference.width * imageWidth, reference.height * imageHeight))
+
+        func pixels(_ a: SensorPoint, _ b: SensorPoint) -> Double {
+            hypot((a.x - b.x) * imageWidth, (a.y - b.y) * imageHeight)
+        }
+        var best: ScaleProximityMeasurement?
+        func consider(_ distance: Double, _ hand: SensorPoint, _ surface: SensorPoint) {
+            if best == nil || distance < best!.distancePixels {
+                best = ScaleProximityMeasurement(distancePixels: distance, referencePixels: referencePixels,
+                                                 handPoint: hand, surfacePoint: surface)
+            }
+        }
+        let tips = fingertips.filter(\.isValid)
+        if !tips.isEmpty {
+            for tip in tips {
+                for region in regions {
+                    let edge = region.nearest(to: tip)   // == tip when the tip is inside the box
+                    consider(pixels(tip, edge), tip, edge)
+                }
+            }
+        } else {
+            for hand in hands where hand.isValid {
+                for region in regions {
+                    // Closest points between two boxes (0 when they overlap).
+                    let hx = max(hand.x, min(hand.x + hand.width, region.x + region.width / 2))
+                    let hy = max(hand.y, min(hand.y + hand.height, region.y + region.height / 2))
+                    let handPoint = SensorPoint(x: hx, y: hy)
+                    let edge = region.nearest(to: handPoint)
+                    let refined = hand.nearest(to: edge)
+                    consider(pixels(refined, edge), refined, edge)
+                }
+            }
+        }
+        return best
+    }
+}
+
+/// Stateful smoothing + thresholds. Mirrors the constants block of SPINOSAURUS.py.
+public struct ScaleRiskTracker {
+    /// Real size of the sterile catheter tip as seen by the camera (longest side). MEASURE YOURS.
+    public var sterileTipSizeMM = 10.0
+    public var highThresholdMM = 30.0     // <= this: HIGH RISK
+    public var mediumThresholdMM = 80.0   // <= this: MEDIUM RISK
+    public var scaleSmoothAlpha = 0.20    // SCALE_SMOOTH_ALPHA
+    public var distanceSmoothAlpha = 0.25 // DISTANCE_SMOOTH_ALPHA
+    public private(set) var mmPerPixel: Double?
+    public private(set) var distanceMM: Double?
+
+    public init() {}
+
+    public mutating func reset() { mmPerPixel = nil; distanceMM = nil }
+
+    private static func ema(_ previous: Double?, _ new: Double, _ alpha: Double) -> Double {
+        guard let previous else { return new }
+        return alpha * new + (1 - alpha) * previous
+    }
+
+    public mutating func update(_ measurement: ScaleProximityMeasurement?) -> RiskLevel {
+        guard let measurement else { distanceMM = nil; return .none }
+        let scale = Self.ema(mmPerPixel, sterileTipSizeMM / measurement.referencePixels, scaleSmoothAlpha)
+        mmPerPixel = scale
+        let raw = measurement.distancePixels * scale
+        // Overlap reports immediately; smoothing must not delay the most serious case.
+        distanceMM = raw == 0 ? 0 : Self.ema(distanceMM, raw, distanceSmoothAlpha)
+        return level(for: distanceMM!)
+    }
+
+    public func level(for millimetres: Double) -> RiskLevel {
+        if millimetres <= highThresholdMM { return .high }
+        if millimetres <= mediumThresholdMM { return .medium }
+        return .none
+    }
+}

@@ -107,6 +107,9 @@ struct RoutineCoachView: View {
                 }
             }.padding()
         }
+        // Pinned above the scroll content so a warning is visible wherever the user has scrolled.
+        .safeAreaInset(edge: .top) { riskBanner.padding(.horizontal) }
+        .animation(.easeOut(duration: 0.15), value: coach.riskLevel)
         .onChange(of: scenePhase) { _, phase in if phase != .active { coach.backgrounded() } }
         .onDisappear { coach.backgrounded() }
         .confirmationDialog("Start a new practice record?", isPresented: $showReset, titleVisibility: .visible) {
@@ -129,6 +132,23 @@ struct RoutineCoachView: View {
                                 // Native sensor -> portrait display: x=1-y, y=x.
                                 // Preview and inference run at different cadences; overlay is diagnostic only.
                                 if coach.fresh {
+                                    // Whole-hand boxes (green) and the closest hand-to-sterile gap (cyan line).
+                                    ForEach(Array(coach.observation.hands.enumerated()), id: \.offset) { _, hand in
+                                        Rectangle().stroke(.green, lineWidth: 2)
+                                            .frame(width: hand.height * geometry.size.width, height: hand.width * geometry.size.height)
+                                            .position(x: (1 - hand.y - hand.height / 2) * geometry.size.width,
+                                                      y: (hand.x + hand.width / 2) * geometry.size.height)
+                                    }
+                                    if let a = coach.observation.closestHand, let b = coach.observation.closestSurface {
+                                        Path { path in
+                                            path.move(to: CGPoint(x: (1 - a.y) * geometry.size.width, y: a.x * geometry.size.height))
+                                            path.addLine(to: CGPoint(x: (1 - b.y) * geometry.size.width, y: b.x * geometry.size.height))
+                                        }.stroke(.cyan, lineWidth: 2)
+                                        if let mm = coach.observation.distanceMM {
+                                            Text(String(format: "%.0f mm", mm)).font(.caption.bold()).foregroundStyle(.yellow)
+                                                .position(x: (1 - a.y) * geometry.size.width + 24, y: a.x * geometry.size.height - 10)
+                                        }
+                                    }
                                     ForEach(Array(coach.observation.fingertips.enumerated()), id: \.offset) { _, tip in
                                         Circle().fill(.cyan).frame(width: 7, height: 7)
                                             .position(x: (1 - tip.y) * geometry.size.width, y: tip.x * geometry.size.height)
@@ -145,6 +165,7 @@ struct RoutineCoachView: View {
                 }
                 Text(coach.capture.status).font(.caption)
                 Text(coach.riskText).font(.callout)
+                Text(coach.scaleText).font(.caption.monospaced())
                 if !coach.observation.modelInstalled {
                     Text("Protected-part model not installed. You can test hands, depth, label text and preparation checks. Proximity monitoring cannot start.").font(.caption).foregroundStyle(.orange)
                 }
@@ -156,6 +177,38 @@ struct RoutineCoachView: View {
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    @ViewBuilder private var riskBanner: some View {
+        switch coach.riskLevel {
+        case .high:
+            warningBanner("HIGH RISK!", detail: "Hand is very close to the sterile tip. Move it away now.",
+                          background: .red, foreground: .white, icon: "exclamationmark.octagon.fill")
+        case .medium:
+            warningBanner("MEDIUM RISK", detail: "Hand is getting close to the sterile tip.",
+                          background: .orange, foreground: .black, icon: "exclamationmark.triangle.fill")
+        case .none:
+            EmptyView()
+        }
+    }
+
+    private func warningBanner(_ title: String, detail: String, background: Color, foreground: Color, icon: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon).font(.title)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.title.bold())
+                Text(detail).font(.callout)
+                if let mm = coach.observation.distanceMM {
+                    Text(String(format: "%.0f mm away (estimated)", mm)).font(.caption.monospaced())
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(foreground)
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(background, in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
     }
 
     private var voicePanel: some View {

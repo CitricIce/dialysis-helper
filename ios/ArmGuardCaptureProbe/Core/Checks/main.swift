@@ -98,6 +98,120 @@ func readyForMonitoring() throws -> RoutineSession {
     return session
 }
 checks += [
+    ("Bag details accumulate across short replies and pause without restarting", {
+        var session = try RoutineSession(template: practiceTemplate())
+        session.start(); _ = session.submit("done")
+        for fragment in ["PracticeBrand", "one point five percent", "two litres", "2027"] { _ = session.submit(fragment) }
+        try expect(session.readBackParts.count == 4 && session.pendingReadBack?.contains("PracticeBrand") == true && session.pendingReadBack?.contains("2027") == true, "Short final detail replaced or lost prior details")
+        _ = session.submit("2027")
+        try expect(session.readBackParts.count == 4, "Repeated detail duplicated")
+        session.pause(); session.resume()
+        try expect(session.readBackParts.count == 4 && session.responsePrompt.contains("two litres"), "Pause lost draft")
+        _ = session.submit("yes it matches")
+        try expect(session.currentCheck?.id == "mask" && session.readBackParts.isEmpty, "Confirmed draft did not advance/clear")
+    }),
+    ("Bag corrections retain history until explicit restart", {
+        var session = try RoutineSession(template: practiceTemplate())
+        session.start(); _ = session.submit("done")
+        _ = session.submit("PracticeBrand two litres")
+        _ = session.submit("Expiry 2027")
+        _ = session.submit("Actually expiry 2028")
+        try expect(session.readBackParts.count == 3 && session.pendingReadBack?.contains("Actually expiry 2028") == true, "Correction lost original context")
+        _ = session.submit("no")
+        try expect(session.pendingReadBack == nil && session.readBackParts.count == 3, "Rejected summary erased context")
+        _ = session.submit("yes")
+        try expect(session.currentCheck?.id == "supplies", "Rejected summary confirmed without correction")
+        _ = session.submit("Corrected strength one point five percent")
+        try expect(session.readBackParts.count == 4, "Correction restarted bag")
+        _ = session.submit("start the bag over")
+        try expect(session.readBackParts.isEmpty && session.pendingReadBack == nil, "Explicit restart ignored")
+    }),
+    ("Assistant can advance ordinary practice checks but not camera, pause or review gates", {
+        var session = try RoutineSession(template: practiceTemplate())
+        session.start(); _ = session.submit("done"); _ = session.submit("PracticeBrand")
+        try expect(!session.assistantAdvance(checkID: "room"), "Stale override advanced")
+        try expect(session.assistantAdvance(checkID: "supplies") && session.currentCheck?.id == "mask", "Conversational override unavailable")
+        try expect(session.events.last?.kind == "assistant_step_advanced" && session.events.last?.evidence == "assistant_judgment_unverified", "Assistant advance claimed verification")
+        try expect(!session.assistantAdvance(checkID: "supplies"), "Old step override advanced twice")
+        session.pause()
+        try expect(!session.assistantAdvance(checkID: "mask"), "Pause bypassed")
+        var monitored = try readyForMonitoring()
+        let id = monitored.currentCheck!.id
+        try expect(!monitored.assistantAdvance(checkID: id), "Unarmed camera check bypassed")
+        _ = monitored.armMonitoring(visionReady: true); monitored.flagPossibleContact()
+        try expect(!monitored.assistantAdvance(checkID: id) && monitored.reviewRequired, "Contact review bypassed")
+    }),
+    ("Read-back fragments stay out of event logs and clear on debug navigation", {
+        var session = try RoutineSession(template: practiceTemplate())
+        session.start(); _ = session.submit("done"); _ = session.submit("PrivatePracticeBrand"); _ = session.submit("2027")
+        let log = String(decoding: try JSONEncoder().encode(session.events), as: UTF8.self)
+        try expect(!log.contains("PrivatePracticeBrand") && !log.contains("2027"), "Read-back text persisted")
+        try expect(session.debugJump(to: "mask") && session.readBackParts.isEmpty && session.pendingReadBack == nil, "Debug jump kept old draft")
+    }),
+    ("Editable JSON voice lines drive read-back prompts and follow-ups", {
+        var object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(practiceTemplate())) as! [String: Any]
+        object["voice"] = ["bag_confirmation": "Edited confirmation: say yes or no.",
+                           "read_back": "Edited read-back: {details}. {instruction}",
+                           "confirmation_retry": "Edited retry. {instruction}"]
+        let template = try JSONDecoder().decode(RoutineTemplate.self, from: JSONSerialization.data(withJSONObject: object))
+        var session = try RoutineSession(template: template)
+        session.start(); _ = session.submit("done")
+        _ = session.submit("Practice bag strength volume expiry")
+        try expect(session.responsePrompt.contains("Edited read-back:") && session.responsePrompt.contains("Edited confirmation:"), "JSON edits ignored")
+        let reply = session.submit("hmm")
+        try expect(reply.contains("Edited retry.") && session.checkIndex == 1, "Edited retry bypassed gate or ignored wording")
+    }),
+    ("Prompts announce the answer format and preserve confirmation after resume", {
+        var session = try RoutineSession(template: practiceTemplate())
+        session.start()
+        try expect(session.responsePrompt.contains("'done'") && session.expectedResponse == "action_report", "Action format hidden")
+        _ = session.submit("done")
+        try expect(session.responsePrompt.contains("a little at a time") && session.expectedResponse == "read_back_details", "Partial answers not announced upfront")
+        _ = session.submit("Practice bag strength volume expiry")
+        let confirmation = session.responsePrompt
+        try expect(session.expectedResponse == "read_back_confirmation" && confirmation.contains("You said:"), "Pending details not reflected in prompt")
+        session.pause(); session.resume()
+        try expect(session.responsePrompt == confirmation && session.expectedResponse == "read_back_confirmation", "Resume returned to initial bag prompt")
+    }),
+    ("Natural read-back confirmations advance once without replacing bag details", {
+        for words in ["yes", "they match", "yes, it matches", "yes, that's correct", "I checked and everything matches"] {
+            var session = try RoutineSession(template: practiceTemplate())
+            session.start(); _ = session.submit("done")
+            _ = session.submit("Practice bag strength volume expiry")
+            _ = session.submit(words)
+            try expect(session.currentCheck?.id == "mask" && session.pendingReadBack == nil, "Confirmation loop: \(words)")
+        }
+        var empty = try RoutineSession(template: practiceTemplate())
+        empty.start(); _ = empty.submit("done"); _ = empty.submit("yes it matches")
+        try expect(empty.currentCheck?.id == "supplies" && empty.pendingReadBack == nil, "Confirmation invented missing details")
+    }),
+    ("Unrecognized and negative confirmations cannot overwrite or pass a read-back", {
+        var session = try RoutineSession(template: practiceTemplate())
+        session.start(); _ = session.submit("done")
+        let details = "Practice bag strength volume expiry"
+        _ = session.submit(details)
+        for words in ["hmm", "yes but they do not match", "I am unsure", "Why is this needed?"] {
+            _ = session.submit(words)
+            try expect(session.currentCheck?.id == "supplies" && session.pendingReadBack == details, "Unclear reply overwrote details or passed")
+        }
+        _ = session.submit("no they don't match")
+        try expect(session.pendingReadBack == nil && session.expectedResponse == "read_back_details", "Mismatch retained confirmable details")
+        _ = session.submit("yes")
+        try expect(session.currentCheck?.id == "supplies" && session.pendingReadBack == nil, "Yes passed after rejected read-back")
+    }),
+    ("Not-expired descriptions are self-reports while other uncertainty still holds", {
+        var session = try RoutineSession(template: practiceTemplate())
+        session.start(); _ = session.submit("done")
+        for words in ["I have not checked the bag", "I'm unsure it is not expired", "This is the wrong bag and it is not expired"] {
+            _ = session.submit(words)
+            try expect(session.pendingReadBack == nil && session.currentCheck?.id == "supplies", "Uncertainty became bag details: \(words)")
+        }
+        let words = "Practice bag strength volume expiry and it is not expired"
+        _ = session.submit(words)
+        try expect(session.pendingReadBack == words && session.checkIndex == 1, "Valid negative description rejected or automatically confirmed")
+        _ = session.submit("yes it matches")
+        try expect(session.currentCheck?.id == "mask", "Explicit confirmation did not complete self-report")
+    }),
     ("Debug jumps discard read-backs and never complete or arm a check", {
         var session = try RoutineSession(template: practiceTemplate())
         session.start(); _ = session.submit("done")

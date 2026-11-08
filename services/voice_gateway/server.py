@@ -67,11 +67,11 @@ def load_local_config(path=None):
             os.environ["CARTESIA_AGENT_ID"] = agent_id
 
 
-def cartesia(path, payload, api_key, *, agent=False):
+def cartesia(path, payload, api_key, *, agent=False, method="POST"):
     headers = {"Content-Type": "application/json", "Cartesia-Version": VERSION}
     headers["X-API-Key" if agent else "Authorization"] = api_key if agent else "Bearer " + api_key
     request = urllib.request.Request("https://api.cartesia.ai/" + path,
-                                     data=json.dumps(payload).encode(), headers=headers, method="POST")
+                                     data=None if payload is None else json.dumps(payload).encode(), headers=headers, method=method)
     with urllib.request.urlopen(request, timeout=15) as response:
         content = response.read(5_000_001)
         if len(content) > 5_000_000:

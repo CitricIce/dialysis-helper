@@ -1,5 +1,34 @@
 # Optional hosted Cartesia gateway
 
+## Voice memory and natural progression (November 8, 2026)
+
+The phone now keeps bag details across replies, including a short final answer
+such as “2027”. New fragments append rather than replace earlier details; later
+corrections stay in the draft, and questions/pause/reconnect preserve it. Rejecting
+a summary keeps the history for correction; “start the bag over” explicitly clears
+it. Draft text stays in session memory, outside event logs. The assistant receives
+the whole draft and is instructed to ask only for genuinely missing information.
+This is raw reported text, not a verified four-field record or prescription check.
+
+The assistant can use `advance_practice_step(check_id)` to advance an ordinary
+practice check conversationally, without exact-phrase or repeated-confirmation
+loops. The phone binds it to the latest actual user turn and original check,
+allows one advance, and logs unverified assistant progression. It cannot arm/skip
+monitoring, resume a pause or clear contact review. The existing Cartesia agent
+has the third tool attached, with a check-ID-only schema; rebuild the iPhone app
+and start a new call to use it. The older installed build will not gain this logic.
+
+Edit `ios/ArmGuardCaptureProbe/ArmGuardCaptureProbe/Resources/RoutineTemplate.json`
+for step order, prompts/help and shared `voice` messages. Edit the adjacent
+`VoiceInstructions.txt` for conversational policy. Rebuild after edits. See
+[the editing guide and current diagrams](../../DESIGN.md#edit-the-voice-prompts-and-routine-flow).
+Other agents can run `setup_agent.py` once to add the tool without replacing
+unrelated tools/configuration. No account login or new agent ID is required.
+
+38 portable checks, 15 gateway/setup tests, project validation and all 16 Swift
+files type-checked against actual Catalyst frameworks passed. Phone microphone,
+conversational behavior and iPhone SDK build still need full Xcode/the device.
+
 The iPhone prototype now connects directly to Cartesia by default. Enter an
 authorized API key once in the phone's Voice setup; it is stored in Keychain.
 No laptop server is needed. Voice and agent IDs are prefilled. Camera, model and
@@ -30,7 +59,8 @@ tool calls acknowledge the resulting state without applying commands twice.
 `get_routine_state` exposes `debug_controls_enabled` and `debug_navigation_used`.
 Debug skips are logged as unverified, do not complete checks/arm monitoring and
 cannot bypass contact review. The bundled `VoiceInstructions.txt` is updated;
-no new agent/tool IDs or account login are needed. Optional deployed gateways
+no new agent ID or account login is needed; the third tool has been attached to
+the project agent. Optional deployed gateways
 must use the updated instructions file; direct phone mode gets it with the build.
 
 Local validation: 29 portable checks, 13 gateway/setup tests, project validation
@@ -54,13 +84,16 @@ python3 services/voice_gateway/setup_agent.py
 python3 services/voice_gateway/server.py
 ```
 
-The first command creates two client tools and a dedicated agent through the
-Cartesia API. Confirmed resource IDs are saved locally and reused on reruns;
+The first command creates three client tools and a dedicated agent, or adds
+the missing advance tool to an existing agent recorded in local setup state.
+Existing unrelated tools/configuration are preserved. Confirmed resource IDs are
+saved locally and reused on reruns;
 no key is stored in that state file. If a request times out after creating a
 resource, its result is unknown and a retry could create a duplicate. An existing
 agent can instead be selected with `CARTESIA_AGENT_ID`, but it must already have
-the two compatible tools described below. The script creates a new dedicated
-agent; it does not reconfigure an existing one.
+the three compatible tools described below. The project's existing agent has been
+migrated. For another existing agent, use matching local setup state to migrate it
+or attach the compatible tools explicitly.
 
 Both phone and Mac must be on the same trusted network. `.env.example` binds this
 development service to `0.0.0.0`; omit that setting to use loopback only. Find the
@@ -71,8 +104,8 @@ firewall connection if prompted. `localhost` on the phone refers to the phone.
 
 Enable **Allow Cartesia voice conversation**, close setup, and tap **Start
 practice** before preparing your hands. Thereafter, say done, ask a question,
-pause, resume, repeat, read the label, or end session. Bag details and protected
-openings need a read-back followed by a separate confirmation. The app records
+pause, resume, repeat, read the label, or end session. Bag details are kept across replies. The agent can summarize and advance ordinary
+checks conversationally through the new advance tool. The app records
 self-reports; it does not verify a prescription or clean technique. Readiness for
 camera monitoring stays under native control. The model is bundled, but when
 monitoring is unavailable, explicitly saying **continue without camera** advances an unmonitored practice step; it never
@@ -105,7 +138,10 @@ measured on hardware here.
 - `POST /speak`, Bearer access code, JSON `{"text":"..."}` returns WAV audio.
 - `POST /agent-session`, same authentication, JSON
   `{"check_id":"hands","phase":"checking"}` returns a WebSocket URL and one-use token.
-- `get_routine_state`: native client tool, no arguments, returns current state.
+- `get_routine_state`: native client tool, no arguments, returns current state and the complete in-session read-back draft.
+- `advance_practice_step`: native client tool, `check_id` only; uses the actual captured
+  user turn to advance one ordinary check by assistant judgment. This cannot arm/skip
+  monitoring, resume a pause or clear review; it records unverified progression.
 - `respond_to_check`: native client tool, `check_id` and verbatim `user_words`.
   The app requires a matching unused user transcript for the current check.
   Assistant speech, invented consent and stale replies are rejected. A matching

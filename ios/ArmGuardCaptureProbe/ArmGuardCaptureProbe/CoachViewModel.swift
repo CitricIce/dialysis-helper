@@ -25,6 +25,10 @@ final class CoachViewModel: ObservableObject {
     @Published private(set) var ended = false
     @Published var debugControlsEnabled = false
     private var replyGate = SpokenReplyGate()
+    private var progressionGate = SpokenReplyGate()
+    private var lastUserCheckID = ""
+    private var lastUserWords = ""
+    private var lastUserTurn = -1
     private var nativeCommand: (checkID: String, words: String)?
     private var resumeCloudAfterCue = false
     @Published private(set) var message = "Set up your voice, then start when you're ready."
@@ -70,11 +74,21 @@ final class CoachViewModel: ObservableObject {
             self.speech.speak(self.message, urgent: true)
         }
         conversation.onUserUtterance = { [weak self] text, turn in
-            guard let self, self.voiceEnabled, !self.ended else { return }
+            guard let self, self.voiceEnabled, !self.ended, turn > self.lastUserTurn else { return }
+            self.lastUserTurn = turn
+            self.lastUserCheckID = self.session?.currentCheck?.id ?? "finished"
+            self.lastUserWords = text
             self.replyGate.receive(text, turn: turn)
+            self.progressionGate.receive(text, turn: turn)
             // These commands belong to the app, and do not wait for an agent tool call.
             let intent = VoiceIntent.parse(text)
-            if [.pause, .resume, .endSession, .skipStep].contains(intent) {
+            let readBackReply: Bool
+            switch intent {
+            case .answer, .confirm:
+                readBackReply = self.session?.phase == .checking && self.session?.currentCheck?.responseKind == .readBack
+            default: readBackReply = false
+            }
+            if readBackReply || [.pause, .resume, .endSession, .skipStep].contains(intent) {
                 let checkID = self.session?.currentCheck?.id ?? "finished"
                 guard self.replyGate.consume(text, expectedCheckID: checkID, currentCheckID: checkID) != nil else { return }
                 self.nativeCommand = (checkID, VoiceIntent.normalize(text))
@@ -134,9 +148,9 @@ final class CoachViewModel: ObservableObject {
     var currentPrompt: String {
         if session?.reviewRequired == true { return "Pause and follow your dialysis team's instructions about possible contact. I can't confirm contact from this view." }
         if session?.phase == .paused { return "We're paused. Say resume when you're ready." }
-        if session?.phase == .monitoring { return "I'm watching. Tell me when you've finished, or say pause." }
+        if session?.phase == .monitoring { return "I'm watching. Say 'done' when you've finished, or say 'pause'." }
         if session?.phase == .preparationOnly { return "Preparation practice is finished. The connection wasn't monitored. Is there anything you'd like to ask?" }
-        return session?.currentCheck?.prompt ?? "We're finished. Is there anything else you'd like to ask?"
+        return session?.responsePrompt ?? "We're finished. Is there anything else you'd like to ask?"
     }
     var cameraMessage: String {
         if session?.reviewRequired == true { return "Possible contact needs review" }
@@ -160,7 +174,8 @@ final class CoachViewModel: ObservableObject {
         guard voiceEnabled, voiceConfigured, let session,
               let request = speech.agentSessionRequest(checkID: session.currentCheck?.id ?? "finished",
                   phase: session.phase, prompt: currentPrompt, checks: session.template.checks) else { return }
-        speech.stop(); replyGate = SpokenReplyGate(); nativeCommand = nil
+        speech.stop(); replyGate = SpokenReplyGate(); progressionGate = SpokenReplyGate()
+        lastUserCheckID = ""; lastUserWords = ""; lastUserTurn = -1; nativeCommand = nil
         conversation.start(request: request)
     }
     func reset() {
@@ -227,6 +242,11 @@ final class CoachViewModel: ObservableObject {
             "help": session?.currentCheck?.help ?? "Follow your dialysis team's written instructions.",
             "camera_ready": canArm, "review_required": session?.reviewRequired ?? false,
             "pending_read_back": session?.pendingReadBack ?? "",
+            "read_back_parts": session?.readBackParts ?? [],
+            "latest_reply_handled_natively": nativeCommand != nil,
+            "assistant_can_advance": session?.phase == .checking && session?.reviewRequired == false && session?.currentCheck?.responseKind != .monitoring,
+            "expected_response": session?.expectedResponse ?? "none",
+            "response_instruction": session?.responseInstruction ?? "",
             "debug_controls_enabled": debugControlsEnabled,
             "debug_navigation_used": session?.debugNavigationUsed ?? false,
             "visible_label_text": String(scannedLabel.prefix(800)),
@@ -237,6 +257,16 @@ final class CoachViewModel: ObservableObject {
     }
     private func runTool(_ name: String, parameters: [String: Any]) -> (String, Bool) {
         if name == "get_routine_state" { return stateResult() }
+        if name == "advance_practice_step" {
+            guard let checkID = parameters["check_id"] as? String, checkID == lastUserCheckID,
+                  progressionGate.consume(lastUserWords, expectedCheckID: checkID,
+                      currentCheckID: session?.currentCheck?.id ?? "finished") != nil,
+                  session?.assistantAdvance(checkID: checkID) == true else {
+                return stateResult(error: "Cannot advance this step. Read current state; camera readiness, pauses and contact review cannot be overridden. Use only the latest real user reply for this check.")
+            }
+            persist(); message = currentPrompt
+            return stateResult()
+        }
         // A late tool call acknowledges the native command, without applying it twice.
         if name == "respond_to_check", let nativeCommand,
            parameters["check_id"] as? String == nativeCommand.checkID,
@@ -309,7 +339,8 @@ final class CoachViewModel: ObservableObject {
     }
     private func didNavigateForDebug() {
         band.stop(); conversation.stop(); speech.stop(); resumeCloudAfterCue = false
-        replyGate = SpokenReplyGate(); nativeCommand = nil
+        replyGate = SpokenReplyGate(); progressionGate = SpokenReplyGate()
+        lastUserCheckID = ""; lastUserWords = ""; lastUserTurn = -1; nativeCommand = nil
         ended = false; scannedLabel = ""; persist()
         message = "Debug step selected. " + currentPrompt
         if voiceEnabled {

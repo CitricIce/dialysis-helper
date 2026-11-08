@@ -122,7 +122,8 @@ struct RoutineCoachView: View {
                 .font(.title3).fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("assistantReply")
             if !coach.ended {
-                Text("Say done, ask a question, or say pause.").font(.footnote).foregroundStyle(.secondary)
+                Text(coach.session?.responseInstruction ?? "Say pause, or ask a question.")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
         }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background(.tint.opacity(0.07), in: RoundedRectangle(cornerRadius: 20))

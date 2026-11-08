@@ -15,6 +15,130 @@ earlier Mac-primary execution/stack sections, which are retained as alternatives
 Prop geometry, exposure rules and bench-validation requirements apply to either
 implementation. [README.md](README.md) documents existing firmware and wiring.
 
+## Edit the voice prompts and routine flow
+
+Current conversational progression, November 8, 2026: the iPhone retains ordered
+verbatim read-back fragments in session memory. Bag details may arrive together
+or across replies; even a one-word product name or expiry year is accepted. New
+details append without overwriting old ones; repeated identical fragments are
+deduplicated. Later corrections remain in the history for the assistant to
+interpret. Questions/uncertainty keep the draft. Rejecting a summary withdraws its
+confirmation but retains the bag history for corrections. “Start the bag over”
+explicitly clears it. Pause/reconnect preserves it; finishing, changing checks,
+resetting or ending the process clears it. It is not persisted in event logs.
+
+Read-back replies are ingested natively on the actual user transcript, before any
+agent tool submission, so an omitted tool call cannot discard an earlier field.
+`get_routine_state` returns `read_back_parts`, combined `pending_read_back`,
+`expected_response`, `response_instruction`, `latest_reply_handled_natively` and
+`assistant_can_advance`. These are raw user reports, not a verified four-field
+record, prescription match or semantic validation. The assistant reads the whole
+draft, gives later corrections priority and asks only for genuinely missing data.
+
+The third client tool, `advance_practice_step(check_id)`, allows conversational
+progression for ordinary action/read-back practice checks when the answer is
+sufficient or the user asks to move on. The app binds it to the latest real user
+turn and its original check; the model need not copy the transcript or use an
+exact confirmation phrase. A reply cannot advance multiple checks. The native
+engine records `assistant_step_advanced` / `assistant_judgment_unverified`, never
+verified completion. No tool can use this path to arm/skip a monitoring window,
+resume a pause, or clear contact review. Questions/concerns should be answered,
+not silently advanced. The fallback parser/read-back confirmation remains
+available; it is no longer the agent's sole route through ordinary checks.
+
+### Files to edit
+
+Edit [RoutineTemplate.json](ios/ArmGuardCaptureProbe/ArmGuardCaptureProbe/Resources/RoutineTemplate.json)
+for the main wording and step order:
+
+| Field | What you can change |
+| --- | --- |
+| `checks` array order | Order of routine steps |
+| Each check's `title`, `prompt`, `help` | Screen title, first spoken request, supplied explanation |
+| Each check's `responseKind` | `actionReport`, `readBack`, or `monitoring` |
+| `voice` object | Shared instructions, bag/opening confirmation, correction, read-back and retry wording |
+
+Keep `{details}` and `{instruction}` in `voice.read_back`. Missing/empty optional
+voice entries use built-in defaults. Keep IDs stable: `supplies` selects bag
+memory/wording, other read-back checks use opening wording. Bag fragments have no
+three-word minimum; the opening fallback still uses a short sentence. Editing
+text does not change camera/review gates. The assistant's ordinary-step override
+can bypass fallback response wording requirements, not those separate gates.
+
+For global conversation behavior edit
+[VoiceInstructions.txt](ios/ArmGuardCaptureProbe/ArmGuardCaptureProbe/Resources/VoiceInstructions.txt).
+Rebuild/Run and start a new voice session after edits. Direct mode overrides
+instructions per session. `setup_agent.py` now creates three tools or migrates an
+existing agent to add the missing progression tool, preserving its other tools,
+voice and model. It also migrates the new progression tool to a check-ID-only
+schema. The existing project agent has been migrated and verified. Other agents
+need the setup command once; a running optional gateway needs restarting when
+instructions change. No account login or new agent ID is needed.
+
+```mermaid
+flowchart TD
+    room["Room preparation"] --> bag["Bag details: one reply or several"]
+    bag --> memory["Phone keeps all reported details"]
+    memory -->|Missing detail| ask["Ask only for that detail"]
+    ask --> memory
+    memory -->|Sufficient answer or natural confirmation| advance["Assistant advances ordinary check"]
+    advance --> mask["Mask"]
+    mask --> hands["Hands"]
+    hands --> openings["Protected openings"]
+    openings --> connect["Connect: camera readiness required"]
+    connect -->|Monitoring finished| therapy["Exchange steps"]
+    therapy --> prep["Disconnect preparation"]
+    prep --> disconnect["Disconnect: camera readiness required"]
+    disconnect --> review["Finish"]
+```
+
+This is a readable diagram, not an executable diagram editor. Change the JSON
+order to change the app, and synchronize the diagram. Debug controls and contact
+review still follow native rules. Camera/BLE do not gate the bag check.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as Cartesia agent
+    participant A as iPhone app
+    U->>C: Speak a full or partial answer
+    C-->>A: Actual user transcript
+    A->>A: Keep read-back fragments in session
+    C->>A: get_routine_state
+    A-->>C: Whole draft, step, progression permissions
+    alt More information is genuinely needed
+        C-->>U: Ask only for the missing detail
+    else Answer is sufficient or user wants to move on
+        C->>A: advance_practice_step(check_id)
+        A->>A: Check phase, original check, actual unused user turn
+        A-->>C: Next step; unverified progression recorded
+        C-->>U: Next prompt
+    end
+```
+
+`respond_to_check(check_id, user_words)` remains available for normal commands and
+fallback processing. Its exact-transcript/current-step/once-only guard can reject
+stale or paraphrased tool submissions. Native read-back ingestion and the new
+check-ID-only advance tool avoid relying on transcript copying for bag memory or
+conversational progression. Late matching native-reply tool calls acknowledge the
+state without applying it twice.
+
+Configuration: the app supplies instructions, starting step/phase, all checks,
+the selected voice, English and output speed 1.0 per session. It does not pin the
+reasoning/STT model or temperature. Fixed warning TTS requests use `sonic-3.6`.
+Three client tools use immediate execution, no pre-tool speech and a 10-second
+timeout. Setup disables inactivity check-ins and ends idle calls at 240 seconds.
+Cartesia's [client-tool documentation](https://docs.cartesia.ai/agents/client-tools)
+and [configuration guide](https://docs.cartesia.ai/agents/configuration) describe
+the provider contract; conversational decisions remain unvalidated.
+
+Validation: 38 portable checks, 15 mocked gateway/setup tests, project membership
+and all 16 Swift files type-checked with actual Catalyst frameworks passed.
+The new tool was attached to the existing live agent; its check-ID-only schema
+was migrated. No live microphone/agent behavioral test or iPhone SDK build was
+possible here. Rebuild and test partial answers, final-only expiry, corrections,
+questions, pause/reconnect, natural confirmation and conversational progression.
+
 ## Camera-only and routine debugging (November 8)
 
 **Test camera + model** on the home screen opens an independent controller with
@@ -67,7 +191,7 @@ for a constrained prop demo, not a required dependency of this iteration.
 | Wristband | CoreBluetooth; legacy patterns or PWM-v2 duty | Matching firmware required. One connected band, no left/right routing yet |
 | Immediate warnings | Local band/display plus preloaded Cartesia clips; phone speech fallback | No cloud round trip in hazard path; voice repetition limited to once per five seconds |
 | Routine speech | One continuous Cartesia Managed Agent conversation; explicit phone-voice option | Setup before hand preparation. Questions, interruptions and check replies share the call; live behavior still needs testing |
-| Native app controls | Two narrowly scoped client tools: get state, respond to current check | A reply must match the latest unused user transcript and current check. Native gates enforce readiness and review; generated explanations remain unvalidated |
+| Native app controls | Three client tools: get state, respond to current check, conversational practice advance | Fallback submissions match exact transcripts; conversational advance binds directly to the actual user turn/current check. Native gates enforce readiness and review; generated explanations remain unvalidated |
 | Other visual support | One-shot Apple text recognition for visible bag labels | Suggestions only; no automatic prescription match, color-based strength inference or automatic check completion |
 | Events | Local timestamp/type/evidence JSON; export by user | No audio, images, free-text read-backs or automatic nurse upload. No cleanliness score |
 
@@ -86,8 +210,8 @@ interaction gates, not semantic or clinical verification.
 Avoid a string of yes/no prompts, mandatory long quizzes, arbitrary repeated
 confirmations and rewards for speed. Short done/ready replies are accepted as self-reports for ordinary action steps.
 Questions and common uncertainty/future-action phrases keep the step open.
-Questions stay in the same conversation. Bag/protected-opening read-backs require
-details and a separate spoken confirmation; they remain self-reported. Test this design
+Questions stay in the same conversation. Bag/protected-opening read-backs retain user reports across turns. The assistant
+can advance ordinary practice checks conversationally; these remain unverified. Test this design
 against yes/no prompts on props: measure omissions, recall after interruptions,
 false completion, response time, requests for help, warning frequency and perceived
 burden. Include PD nurses and intended users before choosing the final flow.
@@ -119,8 +243,8 @@ needed for the integration. Billing and API permissions remain account dependenc
 See [voice setup](services/voice_gateway/README.md).
 
 Microphone audio streams to Cartesia only after explicit consent. Actual user transcripts
-reach native routine controls through the two client tools, with direct native
-dispatch for pause/resume/end/debug-skip. Assistant speech cannot drive them. One actual user turn may be consumed once for the matching current check.
+reach native routine controls through three client tools, with direct native
+dispatch for read-back replies and pause/resume/end/debug-skip. Assistant speech cannot drive them. One actual user turn may be consumed once for the matching current check.
 The agent cannot clear review flags or alter prescriptions. The camera and band
 run locally. Immediate alerts interrupt the cloud call and play cached Cartesia
 audio, falling back to phone speech if needed. On finishing that cue, the app opens

@@ -1,5 +1,34 @@
 # ArmGuard native practice coach and capture test
 
+## Voice memory and natural progression (November 8, 2026)
+
+The phone now keeps bag details across replies, including a short final answer
+such as “2027”. New fragments append rather than replace earlier details; later
+corrections stay in the draft, and questions/pause/reconnect preserve it. Rejecting
+a summary keeps the history for correction; “start the bag over” explicitly clears
+it. Draft text stays in session memory, outside event logs. The assistant receives
+the whole draft and is instructed to ask only for genuinely missing information.
+This is raw reported text, not a verified four-field record or prescription check.
+
+The assistant can use `advance_practice_step(check_id)` to advance an ordinary
+practice check conversationally, without exact-phrase or repeated-confirmation
+loops. The phone binds it to the latest actual user turn and original check,
+allows one advance, and logs unverified assistant progression. It cannot arm/skip
+monitoring, resume a pause or clear contact review. The existing Cartesia agent
+has the third tool attached, with a check-ID-only schema; rebuild the iPhone app
+and start a new call to use it. The older installed build will not gain this logic.
+
+Edit `ios/ArmGuardCaptureProbe/ArmGuardCaptureProbe/Resources/RoutineTemplate.json`
+for step order, prompts/help and shared `voice` messages. Edit the adjacent
+`VoiceInstructions.txt` for conversational policy. Rebuild after edits. See
+[the editing guide and current diagrams](../../DESIGN.md#edit-the-voice-prompts-and-routine-flow).
+Other agents can run `setup_agent.py` once to add the tool without replacing
+unrelated tools/configuration. No account login or new agent ID is required.
+
+38 portable checks, 15 gateway/setup tests, project validation and all 16 Swift
+files type-checked against actual Catalyst frameworks passed. Phone microphone,
+conversational behavior and iPhone SDK build still need full Xcode/the device.
+
 The home screen offers practice coaching and **Test camera + model**, a separate
 camera-only detector test that needs no voice setup. The bundled RF-DETR Small
 model detects hands and protected connector tips; Apple Vision supplies fingertips.
@@ -190,7 +219,10 @@ verify rear LiDAR. Build output is under the repository's ignored `build/` folde
    camera together. Allow camera, microphone and on-device speech permissions.
    Say done to report an action. Ask “Why is this needed?”: the explanation must
    leave the check open. Say pause, resume, or repeat without touching the screen.
-2. Bag details and protected-opening read-backs need a separate confirmation.
+2. In phone-voice fallback, read-backs use a confirmation. In Cartesia mode, the
+   assistant can advance ordinary checks conversationally. Bag details can be given
+   in several replies; try giving just the expiry year last and check prior details
+   remain in the summary. Corrections and pause/reconnect should preserve the draft.
    A bare yes cannot supply missing bag details. Say the details, compare them
    with your written instructions, then say they match. No supplied fluid values
    are clinically validated. Phone recognition needs on-device English support;

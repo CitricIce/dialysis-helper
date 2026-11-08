@@ -1,5 +1,34 @@
 # Handoff: hand-to-sterile-tip proximity warnings (RF-DETR + vibration band)
 
+## Voice memory and natural progression (November 8, 2026)
+
+The phone now keeps bag details across replies, including a short final answer
+such as “2027”. New fragments append rather than replace earlier details; later
+corrections stay in the draft, and questions/pause/reconnect preserve it. Rejecting
+a summary keeps the history for correction; “start the bag over” explicitly clears
+it. Draft text stays in session memory, outside event logs. The assistant receives
+the whole draft and is instructed to ask only for genuinely missing information.
+This is raw reported text, not a verified four-field record or prescription check.
+
+The assistant can use `advance_practice_step(check_id)` to advance an ordinary
+practice check conversationally, without exact-phrase or repeated-confirmation
+loops. The phone binds it to the latest actual user turn and original check,
+allows one advance, and logs unverified assistant progression. It cannot arm/skip
+monitoring, resume a pause or clear contact review. The existing Cartesia agent
+has the third tool attached, with a check-ID-only schema; rebuild the iPhone app
+and start a new call to use it. The older installed build will not gain this logic.
+
+Edit `ios/ArmGuardCaptureProbe/ArmGuardCaptureProbe/Resources/RoutineTemplate.json`
+for step order, prompts/help and shared `voice` messages. Edit the adjacent
+`VoiceInstructions.txt` for conversational policy. Rebuild after edits. See
+[the editing guide and current diagrams](DESIGN.md#edit-the-voice-prompts-and-routine-flow).
+Other agents can run `setup_agent.py` once to add the tool without replacing
+unrelated tools/configuration. No account login or new agent ID is required.
+
+38 portable checks, 15 gateway/setup tests, project validation and all 16 Swift
+files type-checked against actual Catalyst frameworks passed. Phone microphone,
+conversational behavior and iPhone SDK build still need full Xcode/the device.
+
 ## Camera-only debugging, November 8, 2026
 
 The home screen now has **Test camera + model** without voice setup. It runs the

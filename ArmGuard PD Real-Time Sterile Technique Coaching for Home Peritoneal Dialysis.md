@@ -1,5 +1,48 @@
 # ArmGuard PD: Real-Time Sterile Technique Coaching for Home Peritoneal Dialysis
 
+## Current low-accuracy model and camera/voice integration (November 8)
+
+The confirmed phone is **iPhone 15 Pro only**. Its camera image works; the reported
+failure is missing detections and a blocked connection step, not lack of LiDAR.
+The bundled export is a **low-accuracy placeholder**, per the team. Loading or
+compiling it does not establish usable detection. `detectorStatus: "placeholder"`
+in RoutineTemplate.json keeps predictions visible for debugging but disables
+proximity warnings and real monitoring arming. Model weights are unchanged.
+
+The routine now draws boxes, labels/confidence and Apple fingertips on the exact
+analysed frame. Display freshness (one second, then dimmed/marked stale) is separate
+from protection freshness (250 ms). Previously the routine hid all overlays at
+250 ms, so a slower result could never appear. Counts, model errors, frame age,
+a confidence slider for placeholder preview, camera status and restart controls
+are visible at the connection/disconnection steps. A model prediction error no
+longer suppresses independent Apple hand tracking. Camera startup no longer waits
+for voice readiness; permission setup defers safely until the app becomes active.
+
+With the placeholder, “ready” starts `unmonitoredPractice` and “done” finishes it;
+no detections, depth clearance or vibration are required to rehearse. The assistant
+can also finish that rehearsal conversationally. Events explicitly say unmonitored,
+and real contact-review flags stay latched. A real experimental detector still
+requires readiness before arming; merely replacing weights does not change mode.
+
+The voice agent gets derived native observations through `get_routine_state`:
+camera/model status, labels/confidence, opening/hand/fingertip counts, source-frame
+age, display/protection freshness, proximity status and visual mode. Images stay
+on the phone. Instructions explain the entire on-device pipeline, distinguish
+“camera live but no detections” from camera failure, and prohibit blocking this
+rehearsal on `camera_ready` or saying “personally I can't see the camera”. It must
+not claim to visually verify technique or provide protection from this model.
+
+When the improved model arrives, replace SterileParts.mlpackage, preserve/verify
+the raw export contract and class IDs, and test actual props. Change
+`detectorStatus` to `experimental` only for deliberate monitoring tests; rebuild
+and start a new call. This mode remains an unvalidated prototype.
+
+Validation: 40 portable checks, 16 gateway/setup tests, project membership and
+all 16 Swift files type-checked against actual Catalyst frameworks passed. Phone
+overlay behavior, model accuracy, voice/camera timing and an iPhone SDK build still
+need the device/full Xcode. This update does not claim a successful physical test.
+
+
 ## Voice memory and natural progression (November 8, 2026)
 
 The phone now keeps bag details across replies, including a short final answer
@@ -35,7 +78,7 @@ Nov 7, 2026 · @e
 > LiDAR, RF-DETR, Apple fingertip tracking, proximity rules and Bluetooth locally.
 > Cartesia conversation connects directly from the phone using a key entered once
 > and stored in Keychain. A laptop is needed for development/install, not operation.
-> The trained connector-tip model is included. Printed markers are not required.
+> The low-accuracy connector-tip placeholder is included for diagnostics. Printed markers are not required.
 > [DESIGN.md](DESIGN.md) contains the engineering details; [the app guide](ios/ArmGuardCaptureProbe/README.md)
 > contains setup and verification steps. Clinical protocol, real-prop accuracy and
 > physical iPhone warning latency remain unvalidated. Dashboard, scores and clips

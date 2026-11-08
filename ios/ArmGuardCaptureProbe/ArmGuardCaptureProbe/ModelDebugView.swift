@@ -85,7 +85,7 @@ struct ModelDebugView: View {
                             if debug.capture.isRunning { debug.stop() } else { debug.start() }
                         }.buttonStyle(.borderedProminent).disabled(debug.capture.isStarting)
                         Spacer()
-                        Label(debug.observation.modelInstalled ? "Model loaded" : "Waiting for model",
+                        Label(debug.observation.modelInstalled ? (debug.observation.detectorStatus == .placeholder ? "Low-accuracy model loaded" : "Model loaded") : "Waiting for model",
                               systemImage: debug.observation.modelInstalled ? "checkmark.circle" : "hourglass")
                             .font(.caption)
                     }

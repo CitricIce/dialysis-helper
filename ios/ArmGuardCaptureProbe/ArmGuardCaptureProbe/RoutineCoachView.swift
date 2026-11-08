@@ -131,13 +131,37 @@ struct RoutineCoachView: View {
 
     private var cameraPreview: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let image = coach.capture.snapshot.colorImage {
+            if let image = coach.observation.debugImage ?? coach.capture.snapshot.colorImage {
                 Image(decorative: image, scale: 1).resizable().scaledToFit()
-                    .overlay { detectionOverlay }
+                    .overlay { if coach.observation.debugImage != nil { detectionOverlay } }
                     .frame(maxHeight: 260).clipShape(RoundedRectangle(cornerRadius: 16))
+            } else {
+                Text("Waiting for a camera frame").frame(maxWidth: .infinity, minHeight: 120)
+                    .background(.black.opacity(0.05), in: RoundedRectangle(cornerRadius: 16))
             }
+            Text(coach.capture.status).font(.caption)
             Label(coach.cameraMessage, systemImage: "camera")
                 .font(.footnote).foregroundStyle(.secondary)
+            Text(coach.observation.modelStatus).font(.caption).textSelection(.enabled)
+            Text("\(coach.observation.detections.count) boxes · \(coach.observation.fingertips.count) fingertips · " +
+                 (coach.observationAge.map { String(format: "analysed frame %.0f ms old", $0 * 1000) } ?? "waiting for analysis"))
+                .font(.caption.monospacedDigit())
+            if !coach.displayFresh { Text("Analysis waiting, stopped or stale").font(.caption).foregroundStyle(.orange) }
+            if coach.session?.template.detectorStatus != .experimental {
+                HStack { Text("Preview confidence"); Spacer(); Text(String(format: "%.0f%%", coach.detectionConfidence * 100)) }
+                    .font(.caption)
+                Slider(value: $coach.detectionConfidence, in: 0.1...0.9, step: 0.05)
+                Text("Lower this to inspect weak predictions. The low-accuracy model does not control warnings.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if !coach.capture.isRunning {
+                Button("Start camera") { coach.startCamera() }.disabled(coach.capture.isStarting)
+            }
+            if coach.capture.needsSettings {
+                Button("Open app settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }
+            }
         }
     }
 
@@ -156,25 +180,23 @@ struct RoutineCoachView: View {
 
     private var detectionOverlay: some View {
         GeometryReader { geometry in
-            if coach.fresh {
-                ForEach(Array(coach.observation.regions.enumerated()), id: \.offset) { _, region in
-                    Rectangle().stroke(.orange, lineWidth: 2)
+                ForEach(Array(coach.observation.detections.enumerated()), id: \.offset) { _, detection in
+                    let region = detection.region
+                    let color: Color = detection.role == .protectedOpening ? .orange : (detection.role == .hand ? .green : .gray)
+                    Rectangle().stroke(color, lineWidth: 2)
                         .frame(width: region.height * geometry.size.width, height: region.width * geometry.size.height)
                         .position(x: (1 - region.y - region.height / 2) * geometry.size.width,
                                   y: (region.x + region.width / 2) * geometry.size.height)
-                }
-                ForEach(Array(coach.observation.hands.enumerated()), id: \.offset) { _, hand in
-                    Rectangle().stroke(.green, lineWidth: 1)
-                        .frame(width: hand.height * geometry.size.width, height: hand.width * geometry.size.height)
-                        .position(x: (1 - hand.y - hand.height / 2) * geometry.size.width,
-                                  y: (hand.x + hand.width / 2) * geometry.size.height)
+                    Text("\(detection.label) \(Int(detection.confidence * 100))%")
+                        .font(.caption2.bold()).foregroundStyle(color)
+                        .position(x: max(55, min(geometry.size.width - 55, (1 - region.y - region.height / 2) * geometry.size.width)),
+                                  y: max(10, region.x * geometry.size.height + 8))
                 }
                 ForEach(Array(coach.observation.fingertips.enumerated()), id: \.offset) { _, point in
                     Circle().fill(.cyan).frame(width: 6, height: 6)
                         .position(x: (1 - point.y) * geometry.size.width, y: point.x * geometry.size.height)
                 }
-            }
-        }.allowsHitTesting(false).accessibilityHidden(true)
+        }.opacity(coach.displayFresh ? 1 : 0.3).allowsHitTesting(false).accessibilityHidden(true)
     }
 
     private var settings: some View {

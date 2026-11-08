@@ -34,7 +34,12 @@ def agent_payload(check_id, voice_id, phase="checking"):
         initial = "Preparation practice is finished. The connection wasn't monitored. Is there anything you'd like to ask?"
     elif phase == "monitoring":
         initial = "I'm listening. Tell me when you've finished, or say pause."
-    context = {"starting_phase": phase, "starting_check_id": check_id, "checks": template["checks"]}
+    elif phase == "unmonitoredPractice":
+        initial = template.get("voice", {}).get("unmonitored_active", "Camera warnings are off for this rehearsal. Say done when you've finished.")
+    elif phase == "checking" and check and check["responseKind"] == "monitoring" and template.get("detectorStatus", "placeholder") == "placeholder":
+        initial = template.get("voice", {}).get("unmonitored_ready", "Say ready to rehearse this step with camera warnings off.")
+    context = {"starting_phase": phase, "starting_check_id": check_id, "checks": template["checks"],
+               "detector_status": template.get("detectorStatus", "placeholder"), "camera_access": "on_device_derived_observations"}
     return {"config_overrides": {
         "instructions": INSTRUCTIONS + json.dumps(context),
         "initial_message": initial,
@@ -150,7 +155,7 @@ class Gateway(BaseHTTPRequestHandler):
                 if not re.fullmatch(r"[A-Za-z0-9_-]{1,150}", agent_id):
                     raise ValueError("Invalid agent ID")
                 phase = body.get("phase", "checking")
-                if phase not in ("checking", "paused", "monitoring", "reviewRequired", "completed", "preparationOnly"):
+                if phase not in ("checking", "paused", "monitoring", "unmonitoredPractice", "reviewRequired", "completed", "preparationOnly"):
                     raise ValueError("Unknown phase")
                 payload = agent_payload(body.get("check_id"), voice, phase)
                 path, agent = f"v1/agents/websocket/{agent_id}/sessions", True

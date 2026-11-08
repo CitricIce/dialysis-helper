@@ -61,12 +61,12 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         if connectionMode == .direct { return !cartesiaAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !voiceID.isEmpty && !agentID.isEmpty }
         return Self.allowedGateway(gatewayURL) != nil && !gatewayToken.isEmpty
     }
-    func agentSessionRequest(checkID: String, phase: RoutinePhase, prompt: String, checks: [RoutineCheck]) -> URLRequest? {
+    func agentSessionRequest(checkID: String, phase: RoutinePhase, prompt: String, checks: [RoutineCheck], detectorStatus: DetectorStatus = .placeholder) -> URLRequest? {
         if connectionMode == .direct {
             guard let url = Bundle.main.url(forResource: "VoiceInstructions", withExtension: "txt"),
                   let instructions = try? String(contentsOf: url, encoding: .utf8) else { return nil }
             return try? CartesiaRequests.agentSession(apiKey: cartesiaAPIKey, voiceID: voiceID, agentID: agentID,
-                instructions: instructions, initialPrompt: prompt, checks: checks, checkID: checkID, phase: phase)
+                instructions: instructions, initialPrompt: prompt, checks: checks, checkID: checkID, phase: phase, detectorStatus: detectorStatus)
         }
         return gatewayRequest(path: "agent-session", body: ["check_id": checkID, "phase": phase.rawValue])
     }

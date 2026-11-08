@@ -1,5 +1,7 @@
 import Foundation
 
+public enum DetectorStatus: String, Codable { case placeholder, experimental }
+
 public struct RoutineCheck: Codable, Identifiable, Equatable {
     public enum ResponseKind: String, Codable { case actionReport, readBack, monitoring }
     public let id: String
@@ -18,6 +20,7 @@ public struct RoutineTemplate: Codable, Equatable {
     public let slots: [String]
     public let checks: [RoutineCheck]
     public let voice: [String: String]?
+    public let detectorStatus: DetectorStatus?
 
     public func validate() throws {
         guard schemaVersion == 1, practiceOnly, !slots.isEmpty, !checks.isEmpty,
@@ -29,7 +32,7 @@ public struct RoutineTemplate: Codable, Equatable {
 }
 
 public enum RoutinePhase: String, Codable {
-    case idle, checking, paused, monitoring, reviewRequired, preparationOnly, completed
+    case idle, checking, paused, monitoring, unmonitoredPractice, reviewRequired, preparationOnly, completed
 }
 
 public struct RoutineEvent: Codable {
@@ -64,11 +67,12 @@ public struct RoutineSession {
         if reviewRequired { return "contact_review" }
         if phase == .paused { return "resume_or_question" }
         if phase == .monitoring { return "finished_or_pause" }
+        if phase == .unmonitoredPractice { return "unmonitored_active" }
         guard phase == .checking, let check = currentCheck else { return "none" }
         switch check.responseKind {
         case .actionReport: return "action_report"
         case .readBack: return pendingReadBack == nil ? "read_back_details" : "read_back_confirmation"
-        case .monitoring: return "ready_to_monitor"
+        case .monitoring: return template.detectorStatus == .experimental ? "ready_to_monitor" : "unmonitored_ready"
         }
     }
 
@@ -95,6 +99,8 @@ public struct RoutineSession {
                 ? "Compare those details with your written instructions. Say 'yes' if they match, or 'no' to stay here and check them again."
                 : "Say 'ready' to continue, or 'no' to go over the openings again."
         case "ready_to_monitor": return "Say 'ready' when both hands and the opening are in view, or say 'pause'."
+        case "unmonitored_ready": return "Camera warnings are off because the detector is a placeholder. Say 'ready' to rehearse this step, then 'done' when you've finished."
+        case "unmonitored_active": return "This step is unmonitored practice. Say 'done' when you've finished, or 'pause'."
         case "finished_or_pause": return "Say 'done' when you've finished, or say 'pause'."
         case "resume_or_question": return "Say 'resume' when you're ready, or ask a question."
         case "contact_review": return "Pause and follow your care team's instructions about possible contact."
@@ -103,6 +109,7 @@ public struct RoutineSession {
     }
 
     public var responsePrompt: String {
+        if expectedResponse == "unmonitored_ready" || expectedResponse == "unmonitored_active" { return responseInstruction }
         if phase == .checking, let pendingReadBack {
             return voiceLine("read_back", fallback: "You said: {details}. {instruction}")
                 .replacingOccurrences(of: "{instruction}", with: responseInstruction)
@@ -198,6 +205,7 @@ public struct RoutineSession {
 
     /// Conversational progression is separate from verified completion evidence.
     public mutating func assistantAdvance(checkID: String) -> Bool {
+        if phase == .unmonitoredPractice, currentCheck?.id == checkID { return finishUnmonitoredPractice() }
         guard template.practiceOnly, phase == .checking, !reviewRequired,
               currentCheck?.id == checkID, currentCheck?.responseKind != .monitoring else { return false }
         record("assistant_step_advanced", evidence: "assistant_judgment_unverified")
@@ -219,9 +227,25 @@ public struct RoutineSession {
 
     public mutating func armMonitoring(visionReady: Bool) -> Bool {
         guard phase == .checking, currentCheck?.responseKind == .monitoring,
-              visionReady, !reviewRequired else { return false }
+              template.detectorStatus == .experimental, visionReady, !reviewRequired else { return false }
         phase = .monitoring
         record("monitoring_armed", evidence: "experimental_detector")
+        return true
+    }
+
+    public mutating func beginUnmonitoredPractice() -> Bool {
+        guard template.practiceOnly, phase == .checking,
+              currentCheck?.responseKind == .monitoring, !reviewRequired else { return false }
+        phase = .unmonitoredPractice
+        record("unmonitored_practice_started", evidence: "no_camera_protection")
+        return true
+    }
+
+    public mutating func finishUnmonitoredPractice() -> Bool {
+        guard template.practiceOnly, phase == .unmonitoredPractice, !reviewRequired else { return false }
+        record("unmonitored_practice_finished", evidence: "not_monitored")
+        phase = .checking
+        advance(evidence: "not_monitored")
         return true
     }
 
@@ -263,7 +287,7 @@ public struct RoutineSession {
     }
 
     public mutating func pause() {
-        guard phase == .checking || phase == .monitoring || phase == .reviewRequired else { return }
+        guard phase == .checking || phase == .monitoring || phase == .unmonitoredPractice || phase == .reviewRequired else { return }
         pausedPhase = phase
         phase = .paused
         record("paused", evidence: "user_or_lifecycle")

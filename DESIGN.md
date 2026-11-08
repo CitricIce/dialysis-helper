@@ -1,5 +1,48 @@
 # ArmGuard PD: software and feedback design
 
+## Current low-accuracy model and camera/voice integration (November 8)
+
+The confirmed phone is **iPhone 15 Pro only**. Its camera image works; the reported
+failure is missing detections and a blocked connection step, not lack of LiDAR.
+The bundled export is a **low-accuracy placeholder**, per the team. Loading or
+compiling it does not establish usable detection. `detectorStatus: "placeholder"`
+in RoutineTemplate.json keeps predictions visible for debugging but disables
+proximity warnings and real monitoring arming. Model weights are unchanged.
+
+The routine now draws boxes, labels/confidence and Apple fingertips on the exact
+analysed frame. Display freshness (one second, then dimmed/marked stale) is separate
+from protection freshness (250 ms). Previously the routine hid all overlays at
+250 ms, so a slower result could never appear. Counts, model errors, frame age,
+a confidence slider for placeholder preview, camera status and restart controls
+are visible at the connection/disconnection steps. A model prediction error no
+longer suppresses independent Apple hand tracking. Camera startup no longer waits
+for voice readiness; permission setup defers safely until the app becomes active.
+
+With the placeholder, “ready” starts `unmonitoredPractice` and “done” finishes it;
+no detections, depth clearance or vibration are required to rehearse. The assistant
+can also finish that rehearsal conversationally. Events explicitly say unmonitored,
+and real contact-review flags stay latched. A real experimental detector still
+requires readiness before arming; merely replacing weights does not change mode.
+
+The voice agent gets derived native observations through `get_routine_state`:
+camera/model status, labels/confidence, opening/hand/fingertip counts, source-frame
+age, display/protection freshness, proximity status and visual mode. Images stay
+on the phone. Instructions explain the entire on-device pipeline, distinguish
+“camera live but no detections” from camera failure, and prohibit blocking this
+rehearsal on `camera_ready` or saying “personally I can't see the camera”. It must
+not claim to visually verify technique or provide protection from this model.
+
+When the improved model arrives, replace SterileParts.mlpackage, preserve/verify
+the raw export contract and class IDs, and test actual props. Change
+`detectorStatus` to `experimental` only for deliberate monitoring tests; rebuild
+and start a new call. This mode remains an unvalidated prototype.
+
+Validation: 40 portable checks, 16 gateway/setup tests, project membership and
+all 16 Swift files type-checked against actual Catalyst frameworks passed. Phone
+overlay behavior, model accuracy, voice/camera timing and an iPhone SDK build still
+need the device/full Xcode. This update does not claim a successful physical test.
+
+
 Status: prototype source updated November 8, 2026. The
 [native iPhone app](ios/ArmGuardCaptureProbe/README.md) now has practice routines,
 hand tracking, OCR, a Core ML detector adapter, BLE and voice integrations.
@@ -14,6 +57,25 @@ tracking, risk, BLE and audio on the iPhone. The native plan below supersedes th
 earlier Mac-primary execution/stack sections, which are retained as alternatives.
 Prop geometry, exposure rules and bench-validation requirements apply to either
 implementation. [README.md](README.md) documents existing firmware and wiring.
+
+### Camera and voice responsibilities
+
+```mermaid
+flowchart LR
+    RGB["iPhone 15 Pro RGB + LiDAR"] --> V["RF-DETR boxes + Apple fingertips"]
+    V --> UI["Paired frame + labelled overlays"]
+    V --> S["Native state: detections, age, model status"]
+    S -->|get_routine_state| C["Cartesia conversation"]
+    C -->|tools| R["Native routine engine"]
+    R --> P["Placeholder: unmonitored rehearsal"]
+    R --> E["Experimental model + fresh clear depth: armed monitoring"]
+    E --> B["Local Bluetooth / warning cues"]
+```
+
+Camera images are not sent to the voice agent. It speaks from the native results;
+a missing/weak detection is not a camera-permission problem. `unmonitoredPractice`
+allows the placeholder demo to progress without claiming that it is protected.
+Earlier readiness requirements below apply to experimental armed monitoring.
 
 ## Edit the voice prompts and routine flow
 
@@ -392,7 +454,7 @@ clean exchange.
 ## Preferred implementation: native iPhone, no live computer link
 
 The implementation in `ios/ArmGuardCaptureProbe/` now includes the ARKit capture
-test, paired RGB/depth, bundled RF-DETR, Apple fingertips, routines, direct voice
+test, paired RGB/depth, bundled low-accuracy RF-DETR diagnostics, Apple fingertips, routines, direct voice
 and band output. Camera/model-only testing is on the home screen; the original
 hardware-only capture test remains in Developer tools. The
 AVFoundation and marker options below are alternatives, not required next steps.

@@ -37,8 +37,12 @@ and model smoke tests from real-prop accuracy or physical latency tests.
 
 ## Current implementation reference
 
-- The foreground iPhone app runs RGB/LiDAR capture, the bundled RF-DETR model,
-  Apple fingertip tracking, proximity/routine rules, and Bluetooth band output.
+- The confirmed test phone is iPhone 15 Pro. Its foreground app runs RGB/LiDAR,
+  RF-DETR and Apple fingertips locally. The current model is a low-accuracy
+  placeholder: show diagnostic boxes but run connection steps as unmonitored
+  rehearsal. `detectorStatus` in RoutineTemplate.json controls deliberate
+  experimental monitoring; a compiled model is not evidence of usable accuracy.
+  The voice agent receives derived native observations, not camera images.
 - Cartesia connects directly from the phone by default. The user enters an
   authorized key once; it is stored in the device Keychain. Voice needs internet,
   but no laptop server must remain running. A hosted gateway is optional.

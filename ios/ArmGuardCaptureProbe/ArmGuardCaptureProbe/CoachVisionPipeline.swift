@@ -22,6 +22,8 @@ struct CoachVisionSnapshot {
     var receipt = 0.0
     var processingMilliseconds = 0.0
     var modelInstalled = false
+    var modelUsable = false
+    var detectorStatus: DetectorStatus = .placeholder
     var handCoverageComplete = false
     // Scale-reference proximity (SPINOSAURUS method)
     var hands: [ProtectedRegion] = []
@@ -50,9 +52,16 @@ final class CoachVisionPipeline {
     private var labelRoles: [String: DetectionRole] = [:]
     private var minimumConfidence: Float = 0.45 // protected by lock
     private let includeDebugPreview: Bool
+    private let detectorStatus: DetectorStatus
     private lazy var debugRenderer = FrameRenderer() // worker queue only
 
-    init(includeDebugPreview: Bool = false) { self.includeDebugPreview = includeDebugPreview }
+    init(includeDebugPreview: Bool = false) {
+        self.includeDebugPreview = includeDebugPreview
+        if let url = Bundle.main.url(forResource: "RoutineTemplate", withExtension: "json"),
+           let data = try? Data(contentsOf: url), let template = try? JSONDecoder().decode(RoutineTemplate.self, from: data) {
+            detectorStatus = template.detectorStatus ?? .placeholder
+        } else { detectorStatus = .placeholder }
+    }
 
     func setConfidenceThreshold(_ value: Float) {
         guard value.isFinite else { return }
@@ -128,6 +137,7 @@ final class CoachVisionPipeline {
                 modelError = "Core ML model loaded; export and classes still require validation"
             }
         } catch { modelError = "Model failed to load: \(error.localizedDescription)" }
+        if detectorStatus == .placeholder { modelError = "PLACEHOLDER · debug predictions only · " + modelError }
     }
 
     private func process(_ frame: ARFrame, receipt: Double, scanLabel: Bool, confidence: Float) -> CoachVisionSnapshot {
@@ -136,11 +146,14 @@ final class CoachVisionPipeline {
         var result = CoachVisionSnapshot()
         result.receipt = frame.timestamp // ARKit capture time, seconds since boot; includes camera delivery lag.
         result.modelInstalled = model != nil || rfdetr != nil
+        result.detectorStatus = detectorStatus
+        result.modelUsable = result.modelInstalled && detectorStatus == .experimental
         result.modelStatus = modelError
         let handler = VNImageRequestHandler(cvPixelBuffer: frame.capturedImage, orientation: .right)
         do {
             // Every detector is normalized to Vision coordinates: portrait, bottom-left origin.
             var detections: [(name: String, confidence: Float, box: CGRect)] = []
+            do {
             if let rfdetr {
                 detections = try rfdetr.detect(frame.capturedImage, threshold: confidence).map { found in
                     (name: found.className, confidence: found.confidence,
@@ -151,13 +164,15 @@ final class CoachVisionPipeline {
                 request.imageCropAndScaleOption = .scaleFit
                 try handler.perform([request])
                 guard let objects = request.results as? [VNRecognizedObjectObservation] else {
-                    result.decision = .unavailable("Model must export Vision object observations with NMS")
-                    result.processingMilliseconds = (ProcessInfo.processInfo.systemUptime - started) * 1000
-                    return result
+                    throw CocoaError(.coderInvalidValue)
                 }
                 detections = objects.compactMap { object in
                     object.labels.first.map { (name: $0.identifier, confidence: $0.confidence, box: object.boundingBox) }
                 }
+            }
+            } catch {
+                result.modelUsable = false
+                result.modelStatus += " · Prediction failed: \(error.localizedDescription)"
             }
             do {
                 for object in detections {
@@ -231,7 +246,11 @@ final class CoachVisionPipeline {
                 result.labelText = (text.results ?? []).compactMap { $0.topCandidates(1).first?.string }
                     .joined(separator: "\n").prefix(1500).description
             }
-            if model == nil && rfdetr == nil {
+            if detectorStatus == .placeholder {
+                result.decision = .unavailable("Placeholder detector; distance monitoring is off. Camera images are a separate hardware test.")
+            } else if result.modelInstalled && !result.modelUsable {
+                result.decision = .unavailable("Object prediction failed; hand tracking alone cannot protect the opening")
+            } else if model == nil && rfdetr == nil {
                 result.decision = .unavailable("Protected-part model not installed; hand tracking alone cannot protect a connector")
             } else if let depth = frame.sceneDepth, let grid = try? FrameRenderer.copyGrid(depth) {
                 let tooSmall = result.regions.contains {

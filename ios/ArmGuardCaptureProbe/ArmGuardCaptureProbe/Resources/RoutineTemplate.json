@@ -50,8 +50,8 @@
       "id": "connect",
       "title": "Connect",
       "responseKind": "monitoring",
-      "prompt": "Keep both hands and the connector in view. Say 'ready' when you're ready to connect, or 'pause' if you need more time.",
-      "help": "I'll watch for your fingers getting close to the opening. Follow the connection steps you were taught. Say pause whenever you need to."
+      "prompt": "When you're ready to practise the connection step, say 'ready'.",
+      "help": "The phone processes the camera locally. With the current low-accuracy detector we can rehearse the flow, but its predictions do not provide proximity warnings."
     },
     {
       "id": "therapy",
@@ -71,8 +71,8 @@
       "id": "disconnect",
       "title": "Disconnect",
       "responseKind": "monitoring",
-      "prompt": "Keep both hands, the opening and the new cap in view. Say 'ready' when you're ready to disconnect, or 'pause' if you need more time.",
-      "help": "Follow the disconnection steps you were taught. Tell me when you've finished, or say pause if you need a moment."
+      "prompt": "When you're ready to practise the disconnection step, say 'ready'.",
+      "help": "Keep the opening and new cap clear while you follow the practice steps. With the current low-accuracy detector, this rehearsal has no proximity warnings. Say 'done' when you've finished."
     },
     {
       "id": "review",
@@ -97,6 +97,9 @@
     "read_back_rejected": "Let's stay on this step. {instruction}",
     "confirmation_retry": "We're still confirming what I read back. {instruction}",
     "uncertain_reply": "Take your time. {instruction}",
-    "bag_correction": "I've kept the earlier details. Tell me what needs correcting; you don't need to start over."
-  }
+    "bag_correction": "I've kept the earlier details. Tell me what needs correcting; you don't need to start over.",
+    "unmonitored_ready": "The current detector is low accuracy, so this is a rehearsal with camera warnings off. Say 'ready' to practise this step, then 'done' when you've finished.",
+    "unmonitored_active": "Camera warnings are off for this rehearsal. Say 'done' when you've finished, or 'pause'."
+  },
+  "detectorStatus": "placeholder"
 }

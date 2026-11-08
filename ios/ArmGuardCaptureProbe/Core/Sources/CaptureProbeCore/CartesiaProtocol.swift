@@ -17,10 +17,11 @@ public enum CartesiaRequests {
     }
     public static func agentSession(apiKey: String, voiceID: String, agentID: String,
                                     instructions: String, initialPrompt: String, checks: [RoutineCheck],
-                                    checkID: String, phase: RoutinePhase) throws -> URLRequest {
+                                    checkID: String, phase: RoutinePhase, detectorStatus: DetectorStatus = .placeholder) throws -> URLRequest {
         guard !voiceID.isEmpty, !instructions.isEmpty, !checks.isEmpty,
               agentID.range(of: "^[A-Za-z0-9_-]{1,150}$", options: .regularExpression) != nil else { throw RequestError.invalidConfiguration }
         let context: [String: Any] = ["starting_check_id": checkID, "starting_phase": phase.rawValue,
+            "detector_status": detectorStatus.rawValue, "camera_access": "on_device_derived_observations",
             "checks": try JSONSerialization.jsonObject(with: JSONEncoder().encode(checks))]
         let data = try JSONSerialization.data(withJSONObject: context)
         let trustedContext = String(decoding: data, as: UTF8.self)

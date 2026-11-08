@@ -87,7 +87,11 @@ func practiceTemplate() throws -> RoutineTemplate {
     return try JSONDecoder().decode(RoutineTemplate.self, from: Data(contentsOf: root.appendingPathComponent("ArmGuardCaptureProbe/Resources/RoutineTemplate.json")))
 }
 func readyForMonitoring() throws -> RoutineSession {
-    var session = try RoutineSession(template: practiceTemplate())
+    // Synthetic geometry/risk tests explicitly opt into experimental mode.
+    var object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(practiceTemplate())) as! [String: Any]
+    object["detectorStatus"] = "experimental"
+    let template = try JSONDecoder().decode(RoutineTemplate.self, from: JSONSerialization.data(withJSONObject: object))
+    var session = try RoutineSession(template: template)
     session.start()
     while let check = session.currentCheck, check.responseKind != .monitoring {
         let previous = session.checkIndex
@@ -98,6 +102,23 @@ func readyForMonitoring() throws -> RoutineSession {
     return session
 }
 checks += [
+    ("Low-accuracy detector permits rehearsal without arming or blocking on detections", {
+        var session = try RoutineSession(template: practiceTemplate())
+        let check = session.template.checks.first { $0.responseKind == .monitoring }!
+        try expect(session.debugJump(to: check.id), "Could not reach rehearsal")
+        try expect(session.expectedResponse == "unmonitored_ready" && !session.armMonitoring(visionReady: true), "Placeholder armed real monitoring")
+        try expect(session.beginUnmonitoredPractice() && session.phase == .unmonitoredPractice, "Rehearsal required detections")
+        try expect(ProximityFeedback.level(phase: session.phase, fresh: true, decision: .warning(255, meters: 0.001)) == .none, "Rehearsal emitted a proximity warning")
+        session.pause(); session.resume()
+        try expect(session.phase == .unmonitoredPractice, "Resume lost rehearsal mode")
+        try expect(session.assistantAdvance(checkID: check.id) && session.currentCheck?.id != check.id, "Assistant could not finish rehearsal")
+        try expect(session.events.contains { $0.kind == "unmonitored_practice_finished" && $0.evidence == "not_monitored" }, "Rehearsal claimed monitoring")
+    }),
+    ("Unmonitored practice cannot clear a genuine contact review", {
+        var session = try readyForMonitoring()
+        _ = session.armMonitoring(visionReady: true); session.flagPossibleContact()
+        try expect(!session.beginUnmonitoredPractice() && !session.finishUnmonitoredPractice() && session.reviewRequired, "Rehearsal bypassed contact review")
+    }),
     ("Bag details accumulate across short replies and pause without restarting", {
         var session = try RoutineSession(template: practiceTemplate())
         session.start(); _ = session.submit("done")

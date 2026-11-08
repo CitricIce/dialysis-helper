@@ -7,7 +7,10 @@ final class CoachViewModel: ObservableObject {
     let speech = CoachSpeech()
     let band = BandClient()
     let conversation = CartesiaConversation()
-    private let vision = CoachVisionPipeline()
+    private let vision = CoachVisionPipeline(includeDebugPreview: true)
+    @Published var detectionConfidence = 0.45 {
+        didSet { if session?.template.detectorStatus != .experimental { vision.setConfidenceThreshold(Float(detectionConfidence)) } }
+    }
     @Published private(set) var session: RoutineSession?
     @Published private(set) var observation = CoachVisionSnapshot()
     @Published var selectedSlot = "Exchange 1"
@@ -88,7 +91,9 @@ final class CoachViewModel: ObservableObject {
                 readBackReply = self.session?.phase == .checking && self.session?.currentCheck?.responseKind == .readBack
             default: readBackReply = false
             }
-            if readBackReply || [.pause, .resume, .endSession, .skipStep].contains(intent) {
+            let rehearsalReply = self.session?.phase == .unmonitoredPractice ||
+                (self.session?.phase == .checking && self.session?.currentCheck?.responseKind == .monitoring && self.session?.template.detectorStatus != .experimental)
+            if readBackReply || rehearsalReply || [.pause, .resume, .endSession, .skipStep, .skipCamera].contains(intent) {
                 let checkID = self.session?.currentCheck?.id ?? "finished"
                 guard self.replyGate.consume(text, expectedCheckID: checkID, currentCheckID: checkID) != nil else { return }
                 self.nativeCommand = (checkID, VoiceIntent.normalize(text))
@@ -109,8 +114,13 @@ final class CoachViewModel: ObservableObject {
         let age = ProcessInfo.processInfo.systemUptime - observation.receipt
         return capture.isRunning && observation.receipt > 0 && age >= 0 && age <= 0.25
     }
+    var observationAge: Double? {
+        guard observation.receipt > 0 else { return nil }
+        return max(0, ProcessInfo.processInfo.systemUptime - observation.receipt)
+    }
+    var displayFresh: Bool { capture.isRunning && (observationAge.map { $0 <= 1 } ?? false) }
     var canArm: Bool {
-        guard fresh, observation.modelInstalled, observation.handCoverageComplete,
+        guard fresh, observation.modelUsable, observation.handCoverageComplete,
               session?.phase == .checking, session?.currentCheck?.responseKind == .monitoring else { return false }
         if case .clear = observation.decision { return true }
         return false // Start with a clear view and a gap outside the experimental warning band.
@@ -149,12 +159,14 @@ final class CoachViewModel: ObservableObject {
         if session?.reviewRequired == true { return "Pause and follow your dialysis team's instructions about possible contact. I can't confirm contact from this view." }
         if session?.phase == .paused { return "We're paused. Say resume when you're ready." }
         if session?.phase == .monitoring { return "I'm watching. Say 'done' when you've finished, or say 'pause'." }
+        if session?.phase == .unmonitoredPractice { return session?.responseInstruction ?? "Say done when you've finished this unmonitored practice step." }
         if session?.phase == .preparationOnly { return "Preparation practice is finished. The connection wasn't monitored. Is there anything you'd like to ask?" }
         return session?.responsePrompt ?? "We're finished. Is there anything else you'd like to ask?"
     }
     var cameraMessage: String {
         if session?.reviewRequired == true { return "Possible contact needs review" }
-        if !observation.modelInstalled { return "Opening detector has not been added yet" }
+        if session?.template.detectorStatus != .experimental { return "Low-accuracy model preview · practice only · proximity warnings off" }
+        if !observation.modelInstalled { return observation.modelStatus }
         if session?.phase == .monitoring { return "Camera watching" }
         return "Camera needs a clear view before watching"
     }
@@ -167,13 +179,15 @@ final class CoachViewModel: ObservableObject {
         ended = false; voiceEnabled = true
         session?.start(); persist()
         message = currentPrompt
-        if usePhoneVoice { startCamera(); speech.speak(message, urgent: true) }
+        startCamera()
+        if usePhoneVoice { speech.speak(message, urgent: true) }
         else { connectVoice() }
     }
     func connectVoice() {
         guard voiceEnabled, voiceConfigured, let session,
               let request = speech.agentSessionRequest(checkID: session.currentCheck?.id ?? "finished",
-                  phase: session.phase, prompt: currentPrompt, checks: session.template.checks) else { return }
+                  phase: session.phase, prompt: currentPrompt, checks: session.template.checks,
+                  detectorStatus: session.template.detectorStatus ?? .placeholder) else { return }
         speech.stop(); replyGate = SpokenReplyGate(); progressionGate = SpokenReplyGate()
         lastUserCheckID = ""; lastUserWords = ""; lastUserTurn = -1; nativeCommand = nil
         conversation.start(request: request)
@@ -222,7 +236,7 @@ final class CoachViewModel: ObservableObject {
             if session?.phase == .paused {
                 if VoiceIntent.isAffirmative(answer) { resume() }
                 else { say(currentPrompt) }
-            } else if session?.phase == .monitoring {
+            } else if session?.phase == .monitoring || session?.phase == .unmonitoredPractice {
                 if VoiceIntent.isAffirmative(answer) { finishMonitoring() }
                 else { say(currentPrompt) }
             } else if session?.phase == .checking, session?.currentCheck?.responseKind == .monitoring {
@@ -244,7 +258,24 @@ final class CoachViewModel: ObservableObject {
             "pending_read_back": session?.pendingReadBack ?? "",
             "read_back_parts": session?.readBackParts ?? [],
             "latest_reply_handled_natively": nativeCommand != nil,
-            "assistant_can_advance": session?.phase == .checking && session?.reviewRequired == false && session?.currentCheck?.responseKind != .monitoring,
+            "assistant_can_advance": session?.phase == .unmonitoredPractice || (session?.phase == .checking && session?.reviewRequired == false && session?.currentCheck?.responseKind != .monitoring),
+            "detector_status": (session?.template.detectorStatus ?? .placeholder).rawValue,
+            "visual_mode": session?.phase == .monitoring ? "experimental_monitoring" : "unmonitored_practice",
+            "camera_running": capture.isRunning,
+            "camera_status": capture.status,
+            "rear_lidar_supported": capture.supportsLiDAR,
+            "vision_fresh": displayFresh,
+            "vision_protection_fresh": fresh,
+            "model_loaded": observation.modelInstalled,
+            "vision_pipeline_ms": observation.processingMilliseconds,
+            "confidence_threshold": detectionConfidence,
+            "vision_frame_age_ms": observation.receipt > 0 ? max(0, ProcessInfo.processInfo.systemUptime - observation.receipt) * 1000 : -1,
+            "vision_status": observation.modelStatus,
+            "proximity_status": riskText,
+            "opening_count": observation.regions.count,
+            "hand_box_count": observation.hands.count,
+            "fingertip_count": observation.fingertips.count,
+            "detected_objects": observation.detections.prefix(12).map { ["label": $0.label, "confidence": $0.confidence] as [String: Any] },
             "expected_response": session?.expectedResponse ?? "none",
             "response_instruction": session?.responseInstruction ?? "",
             "debug_controls_enabled": debugControlsEnabled,
@@ -303,6 +334,11 @@ final class CoachViewModel: ObservableObject {
     }
     func arm() {
         guard session?.reviewRequired != true else { say(currentPrompt); return }
+        if session?.template.detectorStatus != .experimental {
+            if session?.beginUnmonitoredPractice() == true { band.stop(); persist(); prompt() }
+            else { say(currentPrompt) }
+            return
+        }
         let visionReady = canArm
         guard session?.armMonitoring(visionReady: visionReady) == true else {
             say(observation.modelInstalled
@@ -314,6 +350,7 @@ final class CoachViewModel: ObservableObject {
         persist(); say("I'm watching. Tell me when you've finished.")
     }
     func finishMonitoring() {
+        if session?.finishUnmonitoredPractice() == true { band.stop(); persist(); prompt(); return }
         guard session?.finishMonitoring() == true else { say(currentPrompt); return }
         band.stop(); persist(); prompt()
     }
@@ -376,6 +413,7 @@ final class CoachViewModel: ObservableObject {
         band.stop(); speech.suspend(); conversation.stop()
     }
     private func checkHealth() {
+        objectWillChange.send() // Keep displayed frame age/staleness honest between results.
         guard session?.phase == .monitoring else { return }
         if !fresh { loseObservation("Observation lost or delayed. Pause and restore a clear view before rearming.") }
     }

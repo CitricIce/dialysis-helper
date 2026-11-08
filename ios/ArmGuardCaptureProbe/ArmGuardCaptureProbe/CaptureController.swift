@@ -33,6 +33,7 @@ final class CaptureController: NSObject, ObservableObject, ARSessionDelegate {
     private var rateBaseline = (time: 0.0, frames: 0, depth: 0)
     private var previewReceipt: Double?
     private var permissionRequest: UUID?
+    private var pendingStart = false
 
     private struct PipelineState {
         var runID: UUID?
@@ -48,6 +49,16 @@ final class CaptureController: NSObject, ObservableObject, ARSessionDelegate {
         super.init()
         session.delegate = self
         session.delegateQueue = delegateQueue
+        NotificationCenter.default.addObserver(self, selector: #selector(resumePendingStart),
+                                              name: UIApplication.didBecomeActiveNotification, object: nil)
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func resumePendingStart() {
+        guard pendingStart else { return }
+        pendingStart = false; isStarting = false
+        beginSession()
     }
 
     private func withState<T>(_ body: (inout PipelineState) -> T) -> T {
@@ -61,7 +72,7 @@ final class CaptureController: NSObject, ObservableObject, ARSessionDelegate {
         guard !isRunning, !isStarting else { return }
         needsSettings = false
         guard supportsLiDAR else {
-            status = "Rear LiDAR unavailable. Use an iPhone Pro with LiDAR, such as the 15 Pro. A standard iPhone 16 cannot pass this test."
+            status = "Rear LiDAR unavailable. This build targets the iPhone 15 Pro. The simulator cannot run this capture test."
             return
         }
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -98,7 +109,8 @@ final class CaptureController: NSObject, ObservableObject, ARSessionDelegate {
 
     private func beginSession() {
         guard UIApplication.shared.applicationState == .active else {
-            status = "Return to the app and press Start."
+            pendingStart = true; isStarting = true
+            status = "Waiting for the app to become active after permission setup…"
             return
         }
         withState { $0 = PipelineState(runID: UUID()) }
@@ -133,6 +145,7 @@ final class CaptureController: NSObject, ObservableObject, ARSessionDelegate {
     }
 
     func stop(reason: String = "Stopped. Press Start for a new test.") {
+        pendingStart = false
         permissionRequest = nil
         isStarting = false
         withState { $0.runID = nil }

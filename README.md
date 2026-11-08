@@ -33,6 +33,15 @@ Vision, alerts and BLE run locally. Dynamic questions optionally use a
 phone. Cartesia TTS alone does not answer questions: live Q&A also needs a
 configured, published Managed Agent. No live API calls have been made.
 
+## Check before installing
+
+Run `bash scripts/check-ios-app.sh` for project validation, logic/gateway tests and
+native compilation/type-checking where supported. With full Xcode it builds the
+unsigned iPhone app; the Command Line Tools fallback is explicitly partial.
+GitHub Actions is configured to require the full iPhone build on relevant
+pushes/PRs. See the [test guide](ios/ArmGuardCaptureProbe/README.md#repeatable-checks-before-installing).
+No phone or signing account is needed to catch ordinary compile errors.
+
 ## Piece 1: Wristband
 
 ### Commands

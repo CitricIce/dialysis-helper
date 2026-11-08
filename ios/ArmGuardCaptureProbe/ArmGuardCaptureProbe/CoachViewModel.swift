@@ -26,8 +26,9 @@ final class CoachViewModel: ObservableObject {
 
     init() {
         do {
-            guard let url = Bundle.main.url(forResource: "RoutineTemplate", withExtension: "json", subdirectory: "Resources")
-                ?? Bundle.main.url(forResource: "RoutineTemplate", withExtension: "json") else { throw CocoaError(.fileNoSuchFile) }
+            guard let url = Bundle.main.url(forResource: "RoutineTemplate", withExtension: "json") else {
+                throw CocoaError(.fileNoSuchFile)
+            }
             session = try RoutineSession(template: JSONDecoder().decode(RoutineTemplate.self, from: Data(contentsOf: url)))
         } catch { message = "Practice template could not load. \(error.localizedDescription)" }
         capture.frameObserver = { [weak vision = self.vision] frame in vision?.submit(frame) }
@@ -147,7 +148,10 @@ final class CoachViewModel: ObservableObject {
     }
     func arm() {
         conversation.stop(); speech.stop()
-        guard session?.armMonitoring(visionReady: canArm) == true else {
+        // Read readiness before opening a mutable access to the @Published
+        // session; canArm also reads session and would otherwise overlap it.
+        let visionReady = canArm
+        guard session?.armMonitoring(visionReady: visionReady) == true else {
             message = "Cannot arm: need a fresh clear observation, trained model, usable depth and both hands fully tracked."
             return
         }

@@ -15,7 +15,7 @@ final class CartesiaConversation: ObservableObject {
     private var socket: URLSessionWebSocketTask?
     private var bootstrap: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
-    private var timeout: Timer?
+    private var timeout: Task<Void, Never>?
     private var tapInstalled = false
     private var generation = UUID()
     private var ready = false
@@ -34,11 +34,13 @@ final class CartesiaConversation: ObservableObject {
     func start(base: URL, gatewayToken: String, checkID: String) {
         stop()
         guard UIApplication.shared.applicationState == .active else { return }
-        guard AVAudioSession.sharedInstance().recordPermission == .granted else {
-            AVAudioSession.sharedInstance().requestRecordPermission { [weak self] allowed in
+        let permissionGeneration = generation
+        guard AVAudioApplication.shared.recordPermission == .granted else {
+            AVAudioApplication.requestRecordPermission { [weak self] allowed in
                 DispatchQueue.main.async {
-                    if allowed { self?.start(base: base, gatewayToken: gatewayToken, checkID: checkID) }
-                    else { self?.status = "Microphone permission is required for voice questions." }
+                    guard let self, self.generation == permissionGeneration else { return }
+                    if allowed { self.start(base: base, gatewayToken: gatewayToken, checkID: checkID) }
+                    else { self.status = "Microphone permission is required for voice questions." }
                 }
             }
             return
@@ -53,7 +55,7 @@ final class CartesiaConversation: ObservableObject {
         request.setValue("Bearer \(gatewayToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(withJSONObject: ["check_id": checkID])
-        bootstrap = Task { [weak self] in
+        bootstrap = Task { @MainActor [weak self] in
             do {
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard (response as? HTTPURLResponse)?.statusCode == 200,
@@ -66,24 +68,22 @@ final class CartesiaConversation: ObservableObject {
                 parts.queryItems = [URLQueryItem(name: "cartesia_version", value: "2026-08-14"),
                                     URLQueryItem(name: "access_token", value: access)]
                 guard let url = parts.url else { throw URLError(.badURL) }
-                await MainActor.run {
-                    guard let self, self.generation == token, self.active else { return }
-                    let socket = URLSession.shared.webSocketTask(with: url)
-                    socket.maximumMessageSize = 2_000_000
-                    self.socket = socket
-                    socket.resume()
-                    self.send(["type": "session_create", "audio": ["input_format": "pcm_16000", "output_delivery": "speaking_pace", "continuous_input": true]])
-                    self.receive(token: token)
-                    self.timeout = Timer.scheduledTimer(withTimeInterval: 12, repeats: false) { [weak self] _ in
-                        guard self?.ready == false else { return }
-                        self?.fail("Voice connection timed out. Use the check's offline explanation.")
-                    }
+                guard let self, self.generation == token, self.active else { return }
+                let socket = URLSession.shared.webSocketTask(with: url)
+                socket.maximumMessageSize = 2_000_000
+                self.socket = socket
+                socket.resume()
+                self.send(["type": "session_create", "audio": ["input_format": "pcm_16000", "output_delivery": "speaking_pace", "continuous_input": true]])
+                self.receive(token: token)
+                self.timeout = Task { @MainActor [weak self] in
+                    do { try await Task.sleep(nanoseconds: 12_000_000_000) }
+                    catch { return }
+                    guard let self, self.generation == token, !self.ready else { return }
+                    self.fail("Voice connection timed out. Use the check's offline explanation.")
                 }
             } catch {
-                await MainActor.run {
-                    guard let self, self.generation == token else { return }
-                    self.fail("Voice questions unavailable. Check gateway and published Cartesia agent configuration.")
-                }
+                guard let self, self.generation == token else { return }
+                self.fail("Voice questions unavailable. Check gateway and published Cartesia agent configuration.")
             }
         }
     }
@@ -93,7 +93,7 @@ final class CartesiaConversation: ObservableObject {
         playbackGeneration = UUID()
         active = false; ready = false; sending = false
         pending.removeAll(); microphoneRemainder.removeAll(); queuedSamples = 0
-        timeout?.invalidate(); timeout = nil
+        timeout?.cancel(); timeout = nil
         bootstrap?.cancel(); bootstrap = nil
         receiveTask?.cancel(); receiveTask = nil
         socket?.cancel(with: .normalClosure, reason: nil); socket = nil
@@ -106,7 +106,7 @@ final class CartesiaConversation: ObservableObject {
 
     private func receive(token: UUID) {
         guard let socket else { return }
-        receiveTask = Task { [weak self] in
+        receiveTask = Task { @MainActor [weak self] in
             do {
                 while !Task.isCancelled {
                     let message = try await socket.receive()
@@ -117,16 +117,12 @@ final class CartesiaConversation: ObservableObject {
                     @unknown default: continue
                     }
                     let event = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-                    await MainActor.run {
-                        guard let self, self.generation == token, self.active else { return }
-                        self.handle(event)
-                    }
+                    guard let self, self.generation == token, self.active else { return }
+                    self.handle(event)
                 }
             } catch {
-                await MainActor.run {
-                    guard let self, self.generation == token else { return }
-                    self.fail("Voice connection ended. Routine state unchanged; offline help is available.")
-                }
+                guard let self, self.generation == token else { return }
+                self.fail("Voice connection ended. Routine state unchanged; offline help is available.")
             }
         }
     }
@@ -135,18 +131,14 @@ final class CartesiaConversation: ObservableObject {
         guard let socket, let data = try? JSONSerialization.data(withJSONObject: event),
               let text = String(data: data, encoding: .utf8) else { return }
         let token = generation
-        Task { [weak self] in
+        Task { @MainActor [weak self] in
             do {
                 try await socket.send(.string(text))
-                await MainActor.run {
-                    guard let self, self.generation == token else { return }
-                    completion?()
-                }
+                guard let self, self.generation == token else { return }
+                completion?()
             } catch {
-                await MainActor.run {
-                    guard let self, self.generation == token else { return }
-                    self.fail("Voice network is unavailable. Return to the check controls.")
-                }
+                guard let self, self.generation == token else { return }
+                self.fail("Voice network is unavailable. Return to the check controls.")
             }
         }
     }
@@ -154,7 +146,7 @@ final class CartesiaConversation: ObservableObject {
     private func handle(_ event: [String: Any]) {
         switch event["type"] as? String {
         case "session_ready":
-            timeout?.invalidate(); timeout = nil
+            timeout?.cancel(); timeout = nil
             do { try startAudio(); ready = true; status = "Voice Q&A live · microphone sent to Cartesia" }
             catch { fail("Audio could not start. End voice Q&A and use offline help.") }
         case "audio_output":

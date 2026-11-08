@@ -197,3 +197,66 @@ without it, and urgent proximity/loss warnings always use local speech. Test los
 of the gateway/network: Explain stays available and routine state stays unchanged.
 Managed-Agent access, voice ID, live audio round trips, barge-in/echo behavior and
 account credits have not been verified in this workspace.
+
+## Repeatable checks before installing
+
+From the repository root, run:
+
+```sh
+bash scripts/check-ios-app.sh
+```
+
+This checks Xcode source membership, resource copying, the shared scheme and
+permission declarations; rejects copying a reserved Resources folder into the
+flat iPhone bundle; runs the Swift logic and mocked gateway tests; parses
+all app Swift sources; then uses the strongest available native check. With a
+selected full Xcode/iOS SDK it builds the actual iPhone app **without signing**,
+then validates the built bundle's resource layout.
+With Command Line Tools and Catalyst frameworks it instead type-checks the real
+app sources against those Apple frameworks. That fallback cannot verify iPhone
+linking, packaging, signing, iPhone-only API differences or hardware behavior.
+The first compiler-cache build needs free disk space and can take several minutes.
+
+To require the complete iPhone build and fail if the iOS SDK is missing:
+
+```sh
+bash scripts/check-ios-app.sh --require-ios-build
+```
+
+`.github/workflows/ios-checks.yml` runs the required iPhone build on a GitHub macOS
+runner for relevant pushes/PRs, and can be run manually. This workflow is only
+configured here; no remote CI run has been triggered or verified. It needs no
+phone, developer-team secrets or Cartesia key. Building catches compiler errors
+before phone installation; it does not prove camera, BLE, audio or model accuracy.
+
+Keep your Xcode signing-team and unique bundle-ID changes when updating source.
+The repository's generic project starts without a personal team. Replacing a
+locally configured project file with that template can reset the selection. A
+CodeSign failure is a separate installation/signing problem: inspect the failed
+build's expanded CodeSign log for the underlying error instead of assuming every
+failure is a missing team. The unsigned check deliberately leaves those personal
+settings alone and does not install or publish anything.
+
+### CodeSign mentions `embedded.mobileprovision`
+
+If signing reports `code object is not signed at all` for
+`embedded.mobileprovision`, inspect the built app's layout as well as signing
+settings. This project previously copied a whole folder named `Resources` into
+the app root, which can confuse bundle classification. The project now copies
+`RoutineTemplate.json` individually to the root. The source folder can remain
+named Resources; the build must not copy that folder wholesale. This follows
+[Apple's resource placement rules](https://developer.apple.com/documentation/bundleresources/placing-content-in-a-bundle).
+
+On an existing checkout, preserve your selected development team and bundle ID,
+apply the resource-reference change, then use **Product > Clean Build Folder**
+(Shift-Command-K) and build/run again. Cleaning removes the old copied folder.
+If applying the change manually in Xcode, remove the Resources folder entry from
+**Build Phases > Copy Bundle Resources** and add only `RoutineTemplate.json`.
+Keep the actual JSON file on disk. No manual signing of the embedded provisioning
+profile or certificate deletion is part of this fix.
+
+Local validation now includes a full 13-source Catalyst type-check with real Apple
+frameworks (not an iPhone build). A synthetic flat-bundle ad-hoc signing experiment
+also succeeded after removing the copied Resources directory; the invalid layout
+failed. Actual development signing and phone installation still need the Xcode
+Mac and its selected team/profile.

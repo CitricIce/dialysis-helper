@@ -1,0 +1,34 @@
+name: iPhone app checks
+
+on:
+  push:
+    paths:
+      - 'ios/**'
+      - 'scripts/**'
+      - 'services/voice_gateway/**'
+      - '.github/workflows/ios-checks.yml'
+  pull_request:
+    paths:
+      - 'ios/**'
+      - 'scripts/**'
+      - 'services/voice_gateway/**'
+      - '.github/workflows/ios-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-and-check:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check project, run logic tests and build unsigned iPhone app
+        run: bash scripts/check-ios-app.sh --require-ios-build

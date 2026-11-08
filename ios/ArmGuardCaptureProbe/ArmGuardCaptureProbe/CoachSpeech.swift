@@ -48,29 +48,25 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
             urlRequest.setValue("Bearer \(gatewayToken)", forHTTPHeaderField: "Authorization")
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
             urlRequest.httpBody = try? JSONSerialization.data(withJSONObject: ["text": text])
-            networkTask = Task { [weak self] in
+            networkTask = Task { @MainActor [weak self] in
                 do {
                     let (data, response) = try await URLSession.shared.data(for: urlRequest)
                     guard let http = response as? HTTPURLResponse, http.statusCode == 200,
                           http.mimeType?.hasPrefix("audio/") == true, data.count <= 5_000_000 else {
                         throw URLError(.badServerResponse)
                     }
-                    await MainActor.run {
-                        guard let self, self.token == current else { return }
-                        do {
-                            try self.configureAudio()
-                            self.player = try AVAudioPlayer(data: data)
-                            self.player?.delegate = self
-                            self.player?.prepareToPlay()
-                            guard self.player?.play() == true else { throw URLError(.cannotDecodeContentData) }
-                            self.status = "Cartesia voice"
-                        } catch { self.localSpeech(text, status: "Cartesia unavailable; built-in voice") }
-                    }
+                    guard let self, self.token == current else { return }
+                    do {
+                        try self.configureAudio()
+                        self.player = try AVAudioPlayer(data: data)
+                        self.player?.delegate = self
+                        self.player?.prepareToPlay()
+                        guard self.player?.play() == true else { throw URLError(.cannotDecodeContentData) }
+                        self.status = "Cartesia voice"
+                    } catch { self.localSpeech(text, status: "Cartesia unavailable; built-in voice") }
                 } catch {
-                    await MainActor.run {
-                        guard let self, self.token == current else { return }
-                        self.localSpeech(text, status: "Cartesia unavailable; built-in voice")
-                    }
+                    guard let self, self.token == current else { return }
+                    self.localSpeech(text, status: "Cartesia unavailable; built-in voice")
                 }
             }
         } else { localSpeech(text, status: urgent ? "Immediate local warning" : "Built-in voice") }
@@ -105,20 +101,23 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         guard !speaking, canListen?() != false else { return }
         stopListening()
         token = UUID()
+        let permissionToken = token
         guard SFSpeechRecognizer.authorizationStatus() == .authorized else {
             SFSpeechRecognizer.requestAuthorization { [weak self] permission in
                 DispatchQueue.main.async {
-                    if permission == .authorized { self?.listen() }
-                    else { self?.status = "Speech permission unavailable; type a response instead." }
+                    guard let self, self.token == permissionToken else { return }
+                    if permission == .authorized { self.listen() }
+                    else { self.status = "Speech permission unavailable; type a response instead." }
                 }
             }
             return
         }
-        guard AVAudioSession.sharedInstance().recordPermission == .granted else {
-            AVAudioSession.sharedInstance().requestRecordPermission { [weak self] allowed in
+        guard AVAudioApplication.shared.recordPermission == .granted else {
+            AVAudioApplication.requestRecordPermission { [weak self] allowed in
                 DispatchQueue.main.async {
-                    if allowed { self?.listen() }
-                    else { self?.status = "Microphone unavailable; type a response instead." }
+                    guard let self, self.token == permissionToken else { return }
+                    if allowed { self.listen() }
+                    else { self.status = "Microphone unavailable; type a response instead." }
                 }
             }
             return

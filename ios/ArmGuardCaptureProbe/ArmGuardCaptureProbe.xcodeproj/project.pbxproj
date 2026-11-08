@@ -20,7 +20,7 @@
 		56291088B650BC7F59909CD2 = { isa = PBXBuildFile; fileRef = 112628D3256418F90BF96911; };
 		175B91E4AF061CBF18128D5C = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Core/Sources/CaptureProbeCore/ProximityEngine.swift"; sourceTree = "<group>"; };
 		B586B71CF27896912B22D59F = { isa = PBXBuildFile; fileRef = 175B91E4AF061CBF18128D5C; };
-		7A3F7EA6FE3AD1C7990EA137 = { isa = PBXFileReference; lastKnownFileType = folder; path = "ArmGuardCaptureProbe/Resources"; sourceTree = "<group>"; };
+		7A3F7EA6FE3AD1C7990EA137 = { isa = PBXFileReference; lastKnownFileType = text.json; path = "ArmGuardCaptureProbe/Resources/RoutineTemplate.json"; sourceTree = "<group>"; };
 		4E531CF7D06A5C55BE673A55 = { isa = PBXBuildFile; fileRef = 7A3F7EA6FE3AD1C7990EA137; };
 		52BC2FF184CD9E64C2D5C138 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ArmGuardCaptureProbe/ArmGuardCaptureProbeApp.swift"; sourceTree = "<group>"; };
 		5B0B184B693B993B5E520ABF = { isa = PBXBuildFile; fileRef = 52BC2FF184CD9E64C2D5C138; };

@@ -11,7 +11,7 @@ Command Line Tools alone cannot build an iPhone app.
 EOF
     exit 1
 fi
-exec xcodebuild \
+xcodebuild \
     -project "$repo_root/ios/ArmGuardCaptureProbe/ArmGuardCaptureProbe.xcodeproj" \
     -scheme ArmGuardCaptureProbe \
     -configuration Debug \
@@ -19,3 +19,6 @@ exec xcodebuild \
     -derivedDataPath "$repo_root/build/ios-probe" \
     CODE_SIGNING_ALLOWED=NO \
     build
+
+python3 "$repo_root/scripts/check-ios-bundle.py" \
+    "$repo_root/build/ios-probe/Build/Products/Debug-iphoneos/ArmGuardCaptureProbe.app"

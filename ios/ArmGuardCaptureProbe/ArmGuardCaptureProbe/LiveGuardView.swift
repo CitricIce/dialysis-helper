@@ -5,14 +5,14 @@ import SwiftUI
 extension RiskLevel {
     var title: String {
         switch self {
-        case .none: return "SAFE"
+        case .none: return "NO NEAR WARNING"
         case .medium: return "MEDIUM RISK"
         case .high: return "HIGH RISK"
         }
     }
     var advice: String {
         switch self {
-        case .none: return "Good distance from the sterile tip."
+        case .none: return "No close approach detected in this frame."
         case .medium: return "Your fingers are getting close. Slow down and keep a gap."
         case .high: return "Stop. Move your fingers away from the sterile tip."
         }
@@ -178,6 +178,7 @@ struct DistanceGauge: View {
 // MARK: - Live Guard screen
 
 struct LiveGuardView: View {
+    @AppStorage("sterlingDeveloperMode") private var developerMode = false
     @ObservedObject var coach: CoachViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var pulse = false
@@ -213,7 +214,7 @@ struct LiveGuardView: View {
             }
             VStack(spacing: 8) {
                 topBar
-                modelPanel
+                if developerMode { modelPanel }
                 Spacer()
                 statusCard
             }.padding(.horizontal, 16).padding(.bottom, 8)
@@ -238,6 +239,7 @@ struct LiveGuardView: View {
             Spacer()
             chip(coach.band.connected ? "Band on" : "Band off", symbol: "applewatch.radiowaves.left.and.right",
                  tint: coach.band.connected ? .green : .secondary)
+            if developerMode {
             Button { showConnectors = true } label: {
                 chip(coach.observation.referenceTip.map { String(format: "%@ %.0f mm", $0.name, $0.sizeMM) } ?? "Tips 8 / 13 mm",
                      symbol: "ruler", tint: .secondary)
@@ -246,6 +248,7 @@ struct LiveGuardView: View {
                 Image(systemName: "chart.bar.doc.horizontal").font(.headline).frame(width: 40, height: 40)
                     .background(.ultraThinMaterial, in: Circle())
             }.accessibilityLabel("Session summary")
+            }
         }.foregroundStyle(.white).padding(.top, 8)
     }
 
@@ -313,7 +316,8 @@ struct LiveGuardView: View {
                 Text(level.advice).font(.headline)
                 DistanceGauge(millimetres: mm)
             }
-            statsRow
+            if developerMode { statsRow }
+            else { Text("Experimental preview · not a contact or sterility check").font(.caption).foregroundStyle(.secondary) }
         }
         .padding(18)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26))

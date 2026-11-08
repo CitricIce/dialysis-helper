@@ -50,7 +50,22 @@ def main():
     require(template["practiceOnly"] is True, "unreviewed template must stay practice-only")
     identifiers = [check["id"] for check in template["checks"]]
     require(len(identifiers) == len(set(identifiers)), "duplicate routine check IDs")
+    for check in template["checks"]:
+        require(bool(check.get("exampleResponses")) and
+                all(isinstance(example, str) and example.strip() for example in check["exampleResponses"]),
+                "missing spoken reply examples for " + check["id"])
+    require("ArmGuardCaptureProbe/BrandAssets.xcassets" in resource_paths,
+            "brand asset catalog must be compiled into the app")
+    catalog = APP / "ArmGuardCaptureProbe/BrandAssets.xcassets"
+    for contents in catalog.rglob("Contents.json"):
+        asset = json.loads(contents.read_text())
+        for entry in asset.get("images", []):
+            if "filename" in entry:
+                require((contents.parent / entry["filename"]).is_file(), "missing brand image")
     info = plistlib.loads((APP / "ArmGuardCaptureProbe/Info.plist").read_bytes())
+    launch = info.get("UILaunchScreen", {})
+    require((catalog / (launch.get("UIImageName", "") + ".imageset")).is_dir(), "missing launch logo")
+    require((catalog / (launch.get("UIColorName", "") + ".colorset")).is_dir(), "missing launch background")
     for key in ["NSCameraUsageDescription", "NSMicrophoneUsageDescription", "NSSpeechRecognitionUsageDescription",
                 "NSBluetoothAlwaysUsageDescription", "NSLocalNetworkUsageDescription"]:
         require(bool(info.get(key)), "missing permission purpose: " + key)

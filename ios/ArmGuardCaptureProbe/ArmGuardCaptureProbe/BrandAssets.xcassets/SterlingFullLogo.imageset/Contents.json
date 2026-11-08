@@ -1,0 +1,12 @@
+{
+  "images": [
+    {
+      "filename": "sterling-logo.png",
+      "idiom": "universal"
+    }
+  ],
+  "info": {
+    "author": "xcode",
+    "version": 1
+  }
+}

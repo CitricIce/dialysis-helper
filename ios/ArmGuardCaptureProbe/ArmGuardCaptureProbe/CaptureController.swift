@@ -260,7 +260,7 @@ final class CaptureController: NSObject, ObservableObject, ARSessionDelegate {
         let summary = snapshot.summary
         let center = previewFresh && depthFresh ? summary?.centerMeters.map { String(format: "%.3f m", $0) } : nil
         return """
-        ArmGuard Capture Probe 0.2 (build 2)
+        Sterling Capture Probe 0.2 (build 2)
         Exported: \(ISO8601DateFormatter().string(from: Date()))
         Device: \(UIDevice.current.model), \(UIDevice.current.systemName) \(UIDevice.current.systemVersion)
         Rear scene-depth supported: \(supportsLiDAR)

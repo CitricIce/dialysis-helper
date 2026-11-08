@@ -27,6 +27,10 @@
 		B586B71CF27896912B22D59F /* Core/Sources/CaptureProbeCore/ProximityEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 175B91E4AF061CBF18128D5C /* Core/Sources/CaptureProbeCore/ProximityEngine.swift */; };
 		5E7E21A0C0DE0000000000B2 /* ArmGuardCaptureProbe/LiveGuardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E7E21A0C0DE0000000000B1 /* ArmGuardCaptureProbe/LiveGuardView.swift */; };
 		BD664C21B6FD2E40DF14C127 /* ArmGuardCaptureProbe/RoutineCoachView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F541673ABDFD9AD901C9C03 /* ArmGuardCaptureProbe/RoutineCoachView.swift */; };
+		F502457080B008F19C1D848A /* ArmGuardCaptureProbe/SterlingBrand.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED2BF6F72CF0F66D39F0D9E7; };
+		DE7DAC8F33C1FB5DE12448B4 /* ArmGuardCaptureProbe/PracticePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AAA1987E22E9EBD27ABF1E0; };
+		F2D45EAE38A73A893736C541 /* Core/Sources/CaptureProbeCore/PracticeSchedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A156B275DC84298F60DB93; };
+		BAA4F7BC7BDBE42F27AA03DF /* ArmGuardCaptureProbe/BrandAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3154D0FDAD037C65C79DD9F8; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -53,6 +57,10 @@
 		C323B543F6A316371E85A23B /* ArmGuardCaptureProbe/FrameRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/FrameRenderer.swift; sourceTree = "<group>"; };
 		CEBC3DD7697151D288F793A3 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		D7E2A197C022FDB881528828 /* ArmGuardCaptureProbe/ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/ContentView.swift; sourceTree = "<group>"; };
+		ED2BF6F72CF0F66D39F0D9E7 /* ArmGuardCaptureProbe/SterlingBrand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/SterlingBrand.swift; sourceTree = "<group>"; };
+		7AAA1987E22E9EBD27ABF1E0 /* ArmGuardCaptureProbe/PracticePlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/PracticePlanner.swift; sourceTree = "<group>"; };
+		06A156B275DC84298F60DB93 /* Core/Sources/CaptureProbeCore/PracticeSchedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Sources/CaptureProbeCore/PracticeSchedule.swift; sourceTree = "<group>"; };
+		3154D0FDAD037C65C79DD9F8 /* ArmGuardCaptureProbe/BrandAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = ArmGuardCaptureProbe/BrandAssets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,6 +77,10 @@
 		807C382AB49A9BFF2D00E986 = {
 			isa = PBXGroup;
 			children = (
+				3154D0FDAD037C65C79DD9F8 /* ArmGuardCaptureProbe/BrandAssets.xcassets */,
+				06A156B275DC84298F60DB93 /* Core/Sources/CaptureProbeCore/PracticeSchedule.swift */,
+				7AAA1987E22E9EBD27ABF1E0 /* ArmGuardCaptureProbe/PracticePlanner.swift */,
+				ED2BF6F72CF0F66D39F0D9E7 /* ArmGuardCaptureProbe/SterlingBrand.swift */,
 				221B1DFCBFF44A53F442E62C /* ArmGuardCaptureProbe/ModelDebugView.swift */,
 				0DBDF9922834E9D620397A56,
 				98330B3B5D7FBA01C92EBE06,
@@ -161,6 +173,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BAA4F7BC7BDBE42F27AA03DF /* ArmGuardCaptureProbe/BrandAssets.xcassets in Resources */,
 				8429D897A5BA38A28929B8C5,
 				4E531CF7D06A5C55BE673A55 /* ArmGuardCaptureProbe/Resources/RoutineTemplate.json in Resources */,
 			);
@@ -173,6 +186,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F2D45EAE38A73A893736C541 /* Core/Sources/CaptureProbeCore/PracticeSchedule.swift in Sources */,
+				DE7DAC8F33C1FB5DE12448B4 /* ArmGuardCaptureProbe/PracticePlanner.swift in Sources */,
+				F502457080B008F19C1D848A /* ArmGuardCaptureProbe/SterlingBrand.swift in Sources */,
 				80538CC7232138D59DDF40A0 /* ArmGuardCaptureProbe/ModelDebugView.swift in Sources */,
 				478EC277E26FEB8C970E4A90,
 				989E066A61AD945A0F6CE376,

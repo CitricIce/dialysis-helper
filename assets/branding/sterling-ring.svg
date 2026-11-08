@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Sterling silver ring</title>
+  <desc id="desc">A continuous silver band, tilted diagonally, with an open transparent centre. Sterling's standalone ring mark.</desc>
+  <defs>
+    <linearGradient id="silver" x1="-190" y1="-155" x2="170" y2="165" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8C9298"/>
+      <stop offset=".19" stop-color="#D4D7D9"/>
+      <stop offset=".35" stop-color="#FAFBFC"/>
+      <stop offset=".47" stop-color="#A9AEB4"/>
+      <stop offset=".67" stop-color="#F0F2F3"/>
+      <stop offset=".84" stop-color="#A6ACB2"/>
+      <stop offset="1" stop-color="#697179"/>
+    </linearGradient>
+    <linearGradient id="inner" x1="0" y1="-129" x2="0" y2="129" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#596168"/>
+      <stop offset=".35" stop-color="#81888E"/>
+      <stop offset=".7" stop-color="#C6CBCF"/>
+      <stop offset="1" stop-color="#ECEFF1"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="-152" x2="0" y2="152" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".8"/>
+      <stop offset=".5" stop-color="#6C737A" stop-opacity=".12"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity=".65"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(256 256) rotate(-37)">
+    <path fill="url(#silver)" fill-rule="evenodd" d="M228 0a228 152 0 1 0-456 0a228 152 0 1 0 456 0ZM195 0a195 129 0 1 0-390 0a195 129 0 1 0 390 0Z"/>
+    <path fill="url(#inner)" fill-rule="evenodd" d="M195 0a195 129 0 1 0-390 0a195 129 0 1 0 390 0ZM177-7a177 109 0 1 0-354 0a177 109 0 1 0 354 0Z"/>
+    <ellipse rx="227" ry="151" fill="none" stroke="url(#rim)" stroke-width="1.5"/>
+    <ellipse rx="195" ry="129" fill="none" stroke="#F9FAFB" stroke-opacity=".65" stroke-width="1.2"/>
+  </g>
+</svg>

@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>ArmGuard Coach</string>
+	<string>Sterling</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -23,14 +23,21 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>ArmGuard Probe displays live camera images and LiDAR depth to test this phone's capture hardware. It does not record or upload images.</string>
+	<string>Sterling displays live camera images and LiDAR depth to test this phone's capture hardware. It does not record or upload images.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
 	<key>UILaunchScreen</key>
-	<dict/>
+	<dict>
+		<key>UIImageName</key>
+		<string>SterlingFullLogo</string>
+		<key>UIColorName</key>
+		<string>SterlingLaunchBackground</string>
+		<key>UIImageRespectsSafeAreaInsets</key>
+		<true/>
+	</dict>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>arm64</string>
@@ -45,7 +52,7 @@
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Recognize practice check responses on this phone when on-device recognition is supported.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Connect to your ArmGuard practice wristband to send proximity cues.</string>
+	<string>Connect to your Sterling practice wristband to send proximity cues.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Connect to your development voice gateway on the same network. Camera frames remain on this phone.</string>
 	<key>NSAppTransportSecurity</key>

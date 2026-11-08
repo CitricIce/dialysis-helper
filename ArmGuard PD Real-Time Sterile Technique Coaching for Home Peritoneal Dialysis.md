@@ -1,4 +1,68 @@
-# ArmGuard PD: Real-Time Sterile Technique Coaching for Home Peritoneal Dialysis
+# Sterling: keep it clean
+
+**Public brand:** Sterling · **Slogan:** keep it clean
+
+**Description:** Your at-home dialysis companion, with voice guidance, camera support and wristband feedback.
+
+**Mission:** Help people stay safely on home peritoneal dialysis by reducing hygiene-related infections and avoidable transitions to hemodialysis. This is the mission, not a demonstrated outcome. Longer term, extend that support to other home medical procedures.
+
+Logo concept: [silver-ring wordmark](assets/branding/sterling-logo-v1.png).
+
+## Current Sterling interface (November 8, 2026)
+
+The three supplied sketches (`IMG_2638`, `IMG_2637`, `IMG_2636`) and
+`dialysis-routine-demo.html` inform the current native SwiftUI interface: a routine
+list, editable session cards, daily practice progress, and voice-led checks with
+camera support during connection/disconnection. Example treatment strengths,
+volumes, dwell times and clinical advice from the HTML were not adopted.
+
+- **My routines:** four defaults, Exchange 1–4, appear on first launch. Each can be
+  renamed, edited or deleted; **Add routine** creates another. Deleting all routines
+  leaves the plan empty, including after relaunch. Names, optional personal times,
+  notes and opt-in daily reminders persist on the phone. Times start unset so the
+  app does not invent a prescribed schedule. Timed cards sort before untimed cards.
+- **Edit routine → What to say at each check:** expand any of the ten checks to see
+  its actual prompt and example spoken responses. The bag examples explain reading
+  real label details over multiple replies, adding just a missing detail, correcting
+  the read-back, and confirming against the user's own instructions. Examples use
+  bracketed spaces rather than sample prescriptions. `exampleResponses` lives beside
+  each check in `Resources/RoutineTemplate.json`; edit it with the prompts and rebuild.
+- Every routine currently runs the **same practice template**. Editor notes and
+  reminder times are personal planning metadata, not agent instructions, checked
+  prescriptions, individualized treatment flows or adherence records.
+- **During practice:** large step title, progress, the current spoken response and
+  reply guidance. Existing pause/resume/next-step voice commands remain available;
+  typing and on-screen controls are optional fallbacks. Camera preview and overlays
+  appear at connection/disconnection. Opening the full-screen camera no longer uses
+  the root view's disappearance as a reason to pause voice; actual app backgrounding
+  still pauses it. No new mandatory tap was added to progression.
+- **Developer mode:** gear → Settings → Developer mode (off by default, persisted).
+  Enables home tiles for Live Guard, camera/model testing without voice, LiDAR testing
+  and connector/zone controls. Live Guard's model panel, confidence slider, raw frame
+  diagnostics, measurement summaries and routine debug controls are retained behind
+  this switch. Voice setup and wristband connection/test remain available normally.
+- **Brand:** silver ring mark in the home header and active routine toolbar, full
+  Sterling wordmark in the native launch screen, slogan **keep it clean**. Standalone
+  transparent vector: `assets/branding/sterling-ring.svg`. SwiftUI draws a native
+  vector companion; the full PNG is bundled in `BrandAssets.xcassets`. Signing team,
+  bundle identifier and legacy technical filenames are preserved.
+- **Progress and reminders:** only the routine engine's completed phase marks a
+  practice finished today; ending, pausing or preparation-only exit does not. Counts
+  roll over at local midnight. This includes unverified practice progression, so the
+  count is not treatment adherence or a cleanliness score. Reminder edits/deletions
+  replace/cancel only Sterling's pending notifications. Delivery depends on iPhone
+  notification permission and system settings; reminders do not run treatment steps.
+- **Camera limits:** the low-accuracy placeholder remains. The teammate's existing
+  image-scale distance cues and BLE/audio feedback are preserved when fresh estimates
+  exist, including outside explicitly armed monitoring. Placeholder routine steps
+  still progress as unmonitored rehearsal. No visual sterility/contact verification
+  or infection reduction is claimed; the LLM receives derived observations, not images.
+- **Verification:** 49 portable checks and 16 gateway/setup tests pass; project
+  membership, reply-example coverage and launch asset references pass. All 20 Swift
+  sources type-check against actual Apple Mac Catalyst frameworks. An iPhone SDK
+  build, launch-screen layout, Dynamic Type/VoiceOver, notification delivery, and the
+  combined camera/voice/band flow on iPhone 15 Pro still require full Xcode/the phone.
+  Earlier validation counts below describe their respective historical changes.
 
 ## Short spoken warnings that don't pile up (November 8)
 
@@ -38,8 +102,9 @@ medium-risk distance**, and both are editable in the app (`WarningDistances` in
 | HIGH RISK | within 30 mm | **within 10 mm** | red banner, continuous band, repeated voice cue |
 | MEDIUM RISK | within 80 mm | **within 30 mm** | orange banner, pulsing band, short voice cue (see above) |
 
-- **Where to change them:** the home **Connectors** tile, the ruler chip in Live Guard's
-  top bar, or gear → Settings → Connector tips → **Warning zones**. Each level has a
+- **Where to change them:** enable **Developer mode** in Settings, then use the home
+  **Connectors** tile, the ruler chip in Live Guard, or Settings → Connector tips →
+  **Warning zones**. Each level has a
   − / + stepper in 5 mm steps. **Reset to 10 mm and 30 mm** appears once either differs.
 - **Rules:** HIGH is 5–145 mm. MEDIUM always stays at least 5 mm outside HIGH (raising
   HIGH pushes MEDIUM out), up to 150 mm. The 5 mm release margin (hysteresis) is unchanged.
@@ -58,11 +123,10 @@ medium-risk distance**, and both are editable in the app (`WarningDistances` in
   membership, and all app sources type-checked against Mac Catalyst frameworks.
   **Not verified:** iPhone SDK build, the steppers on a phone, and zone size against a ruler.
 
-## Earlier features restored and Roboflow model visible again (November 8)
+## Detection tools retained in Developer mode (November 8)
 
-The consumer redesigns had hidden or moved features the team relied on. The Roboflow
-model code (`RFDETRDetector.swift`, pipeline detection) never changed and still runs on
-every frame, but its output was no longer visible. Restored:
+The Roboflow model code (`RFDETRDetector.swift`, pipeline detection) remains in place.
+Enable Settings → Developer mode to access the team's technical controls:
 
 - **Detection labels:** Live Guard and the practice camera preview draw every RF-DETR
   detection again, with class name and confidence (orange tip, green hand, gray other).
@@ -72,10 +136,10 @@ every frame, but its output was no longer visible. Restored:
   processing time and the **detection sensitivity slider** (the placeholder often scores
   below the default 45%).
 - **Practice camera details** (capture status, model status, counts, frame age, stale
-  warning, preview-confidence slider) are shown openly again, not collapsed.
-- **Home:** the **Model test** tile (the original "Test camera + model" screen) is back next
-  to Live Guard, and "Set up Cartesia voice for open questions" shows when voice isn't
-  configured. Both are also in Settings → Developer tools.
+  warning, preview-confidence slider) appear when Developer mode is enabled.
+- **Home in Developer mode:** the **Model test** tile opens the original camera/model
+  screen without voice. Live Guard, depth testing and connectors are alongside it.
+  Voice setup remains in the ordinary Settings screen.
 - The manual tip-size field stays removed by request; tip sizes are fixed (8 mm / 13 mm).
 
 ## Fixed connector tip sizes and real-app home screen (November 8)
@@ -99,19 +163,19 @@ every frame, but its output was no longer visible. Restored:
 - Live Guard labels each tip on screen ("Blue tip · 8 mm" / "Clear tip · 13 mm"). The
   gear → Settings → Connector tips and the home **Connectors** tile open a read-only
   connector sheet.
-- **Home screen:** a greeting and date, a gradient "Ready for your exchange" status card
-  with status pills (on-device camera, band, voice) and the **Start exchange practice**
-  button, quick-action tiles (Live Guard, Wristband, Connectors), a **Your connectors**
-  card, a **Last session** card from real session stats, and a "How ArmGuard works" strip.
+- **Home screen:** superseded by **My routines** and the optional Developer mode
+  described at the top of this document. Measurement statistics remain available to
+  developers; the normal screen shows daily practice progress instead.
 - **Limits:** colour identification is a heuristic. A blue drape, coloured light or a
   strong white-balance cast could mislabel a clear tip, so check the on-screen label.
 - **Verified:** portable checks (new fixed-size/colour/reference check) and the unsigned
   iPhone build. **Not verified:** colour identification on the real connectors.
 
-## Consumer UI, Live Guard and safety summary (November 8)
+## Earlier consumer UI and measurement summary (historical, November 8)
 
-The app was redesigned for patients rather than developers (code: `LiveGuardView.swift`,
-`RoutineCoachView.swift`, `SafetyStats` in `ProximityEngine.swift`).
+This section records the earlier interface. The current Sterling routine screen
+and Developer-mode visibility are described above; current defaults are 10/30 mm.
+The underlying Live Guard and `SafetyStats` code is retained.
 
 - **Home:** (since replaced by the real-app home above) a setup checklist, a **Live Guard**
   card, and one **Start guided practice** button. It uses
@@ -225,7 +289,7 @@ has the third tool attached, with a check-ID-only schema; rebuild the iPhone app
 and start a new call to use it. The older installed build will not gain this logic.
 
 Edit `ios/ArmGuardCaptureProbe/ArmGuardCaptureProbe/Resources/RoutineTemplate.json`
-for step order, prompts/help and shared `voice` messages. Edit the adjacent
+for step order, prompts/help, `exampleResponses` and shared `voice` messages. Edit the adjacent
 `VoiceInstructions.txt` for conversational policy. Rebuild after edits. See
 [the editing guide and current diagrams](DESIGN.md#edit-the-voice-prompts-and-routine-flow).
 Other agents can run `setup_agent.py` once to add the tool without replacing
@@ -249,7 +313,7 @@ Nov 7, 2026 · @e
 
 ## Current testing flow
 
-**Settings → Developer tools → Camera + model test** runs the bundled detector and Apple
+**Settings → Developer mode → Developer tools → Camera + model test** runs the bundled detector and Apple
 fingertips without voice, routine checks or vibration. It shows confidence, boxes
 on the exact analysed frame, fingertip dots, depth availability and timing/frame
 age. No Cartesia key, internet or printed marker is needed. Stop/Done/background

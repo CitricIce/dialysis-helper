@@ -576,6 +576,42 @@ checks += [
     })
 ]
 
+checks += [
+    ("Routine times and opt-in reminders reject unusable schedules", {
+        try expect(PracticeRoutine(name: "Morning").isValid, "Untimed default missing")
+        try expect(!PracticeRoutine(name: "  ").isValid, "Blank routine accepted")
+        try expect(!PracticeRoutine(name: "Morning", minuteOfDay: -1).isValid, "Negative time accepted")
+        try expect(!PracticeRoutine(name: "Morning", minuteOfDay: 1440).isValid, "Invalid hour accepted")
+        try expect(!PracticeRoutine(name: "Morning", reminder: true).isValid, "Reminder without time accepted")
+        try expect(PracticeRoutine(name: "Evening", minuteOfDay: 1439, reminder: true).isValid, "Valid reminder rejected")
+    }),
+    ("Timed routines sort stably before untimed defaults", {
+        let untimed = PracticeRoutine(name: "Untimed")
+        let late = PracticeRoutine(name: "Late", minuteOfDay: 1200)
+        let early = PracticeRoutine(name: "Early", minuteOfDay: 480)
+        let same = PracticeRoutine(name: "Same", minuteOfDay: 480)
+        try expect(PracticeRoutine.ordered([untimed, late, early, same]).map(\.id) == [early.id, same.id, late.id, untimed.id],
+                   "Personal routine order changed unpredictably")
+    }),
+    ("Routine persistence keeps identity, notes, reminders and empty deletions", {
+        let routine = PracticeRoutine(name: "My exchange", minuteOfDay: 540, reminder: true,
+                                      note: "My own note", completedAt: Date(timeIntervalSince1970: 100))
+        let decoded = try JSONDecoder().decode([PracticeRoutine].self, from: JSONEncoder().encode([routine]))
+        try expect(decoded == [routine], "Saved routine fields changed")
+        let empty = try JSONDecoder().decode([PracticeRoutine].self, from: JSONEncoder().encode([PracticeRoutine]()))
+        try expect(empty.isEmpty, "Deleting the last routine restores defaults")
+    }),
+    ("Daily practice completion resets at the user's local midnight", {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: -5 * 3600)!
+        let finish = calendar.date(from: DateComponents(year: 2026, month: 11, day: 8, hour: 23, minute: 59))!
+        let routine = PracticeRoutine(name: "Evening", completedAt: finish)
+        try expect(routine.completed(on: finish, calendar: calendar), "Current-day practice missing")
+        try expect(!routine.completed(on: finish.addingTimeInterval(120), calendar: calendar), "Yesterday counted today")
+        try expect(!PracticeRoutine(name: "Not started").completed(on: finish, calendar: calendar), "Unstarted routine counted finished")
+    })
+]
+
 var failures = 0
 for (name, check) in checks {
     do {

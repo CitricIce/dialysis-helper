@@ -35,12 +35,24 @@ Summarize which documents changed and which verification remains outstanding.
 Distinguish targets from measured results, source/type checks from iPhone builds,
 and model smoke tests from real-prop accuracy or physical latency tests.
 
+## Brand
+
+The company, app and system are called **Sterling**. The slogan is **keep it clean**.
+Use Sterling in user-facing copy. Legacy ArmGuard project/target/bundle filenames
+remain technical identifiers; preserve working signing settings. The logo concept
+is `assets/branding/sterling-logo-v1.png`; the standalone vector is
+`assets/branding/sterling-ring.svg`. The app draws a native vector companion and
+bundles the full wordmark for launch. Describe the system as voice guidance,
+camera support and wristband feedback (audio, visual and haptic). Describe infection reduction as the
+mission, not a proven prototype outcome.
+
 ## Current implementation reference
 
 - The confirmed test phone is iPhone 15 Pro. Its foreground app runs RGB/LiDAR,
   RF-DETR and Apple fingertips locally. The current model is a low-accuracy
-  placeholder: show diagnostic boxes but run connection steps as unmonitored
-  rehearsal. `detectorStatus` in RoutineTemplate.json controls deliberate
+  placeholder: show experimental previews but run connection steps as unmonitored
+  rehearsal. Existing image-scale distance warnings can still drive cues when fresh;
+  do not describe those estimates as protection or sterility verification. `detectorStatus` in RoutineTemplate.json controls deliberate
   experimental monitoring; a compiled model is not evidence of usable accuracy.
   The voice agent receives derived native observations, not camera images.
 - Cartesia connects directly from the phone by default. The user enters an
@@ -57,3 +69,13 @@ and model smoke tests from real-prop accuracy or physical latency tests.
 Preserve existing local edits and signing settings when integrating teammates'
 changes. Leave changes unstaged and uncommitted unless the user explicitly asks
 for a commit. Do not push unless requested.
+
+## Everyday UI and developer access
+
+Keep the normal interface focused on My routines and voice-led practice. Four
+editable/deletable defaults and Add routine are intentional. Names, times, notes
+and reminders are personal metadata; all routines currently share the practice
+template. Keep exampleResponses beside each check in RoutineTemplate.json and show
+them in the routine editor. Technical panels, model/depth tests and measurement
+summaries remain accessible through Settings → Developer mode. Preserve this access
+when changing the consumer UI. Do not turn practice counts into adherence claims.

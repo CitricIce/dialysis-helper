@@ -16,70 +16,112 @@
       "title": "Get the space ready",
       "responseKind": "actionReport",
       "prompt": "Let's get your space ready. Check the airflow around your work area. Say 'done' when you've finished, or ask me a question.",
-      "help": "Check your work area using the room setup instructions you were taught. I can't see the rest of the room from here."
+      "help": "Check your work area using the room setup instructions you were taught. I can't see the rest of the room from here.",
+      "exampleResponses": [
+        "Done, I've checked the space and airflow.",
+        "Can you remind me what to check here?"
+      ]
     },
     {
       "id": "supplies",
       "title": "Check the bag",
       "responseKind": "readBack",
       "prompt": "Read the bag's name, strength, amount and expiry date. You can give them together or a little at a time. I'll keep what you've told me and ask only for anything missing.",
-      "help": "Compare the label with your written instructions, and check the bag and packaging. I can read visible text if you say read the label. You'll still need to check it yourself."
+      "help": "Compare the label with your written instructions, and check the bag and packaging. I can read visible text if you say read the label. You'll still need to check it yourself.",
+      "exampleResponses": [
+        "The name is [read the name], strength [read the strength], amount [read the volume], and expiry [read the date].",
+        "The expiry is [read the date].",
+        "Yes, those details match my written instructions.",
+        "No, the amount I said needs correcting."
+      ]
     },
     {
       "id": "mask",
       "title": "Put on your mask",
       "responseKind": "actionReport",
       "prompt": "Put on your mask the way you were taught. Say 'done' when it's on.",
-      "help": "Do this before cleaning your hands. You don't need to move the phone to show me your face."
+      "help": "Do this before cleaning your hands. You don't need to move the phone to show me your face.",
+      "exampleResponses": [
+        "Done, my mask is on."
+      ]
     },
     {
       "id": "hands",
       "title": "Clean your hands",
       "responseKind": "actionReport",
       "prompt": "Next, clean and dry your hands using the method you were taught. Take your time. Say 'done' when you've finished.",
-      "help": "Use your care team's hand cleaning instructions, including any hand sanitizer step they taught you. Hand tracking can't tell whether your hands are clean."
+      "help": "Use your care team's hand cleaning instructions, including any hand sanitizer step they taught you. Hand tracking can't tell whether your hands are clean.",
+      "exampleResponses": [
+        "Done, I've cleaned and dried my hands.",
+        "I need more time."
+      ]
     },
     {
       "id": "teachback",
       "title": "Keep the openings clear",
       "responseKind": "readBack",
       "prompt": "Before we connect, name the openings that need to stay untouched in a short sentence. I'll read your answer back, then ask you to say 'ready' to continue or 'no' to go over it again.",
-      "help": "Think about the exposed connector opening and the inside of the new cap. Keep fingers, clothing and other surfaces away from them."
+      "help": "Think about the exposed connector opening and the inside of the new cap. Keep fingers, clothing and other surfaces away from them.",
+      "exampleResponses": [
+        "The exposed connector opening and the inside of the new cap need to stay untouched.",
+        "Ready.",
+        "No, let's go over that again."
+      ]
     },
     {
       "id": "connect",
       "title": "Connect",
       "responseKind": "monitoring",
       "prompt": "When you're ready to practise the connection step, say 'ready'.",
-      "help": "The phone processes the camera locally. With the current low-accuracy detector we can rehearse the flow, but its predictions do not provide proximity warnings."
+      "help": "The phone processes the camera locally. With the current low-accuracy detector we can rehearse the flow, but its predictions do not provide proximity warnings.",
+      "exampleResponses": [
+        "Ready.",
+        "Done, I've finished practising the connection.",
+        "Pause."
+      ]
     },
     {
       "id": "therapy",
       "title": "Follow your exchange steps",
       "responseKind": "actionReport",
       "prompt": "Follow the next steps in your exchange instructions. Say 'done' when you're ready to practise disconnecting.",
-      "help": "Use the sequence and timings you were taught. I don't have your prescribed treatment settings."
+      "help": "Use the sequence and timings you were taught. I don't have your prescribed treatment settings.",
+      "exampleResponses": [
+        "Done, I'm ready to practise disconnecting.",
+        "I have a question before we continue."
+      ]
     },
     {
       "id": "disconnect-preparation",
       "title": "Get ready to disconnect",
       "responseKind": "actionReport",
       "prompt": "Get the supplies ready for disconnecting, and repeat the hand preparation you were taught. Say 'done' when you've finished.",
-      "help": "This is a new preparation check. Don't assume the earlier hand cleaning still covers everything you've touched since then."
+      "help": "This is a new preparation check. Don't assume the earlier hand cleaning still covers everything you've touched since then.",
+      "exampleResponses": [
+        "Done, my supplies and hand preparation are ready."
+      ]
     },
     {
       "id": "disconnect",
       "title": "Disconnect",
       "responseKind": "monitoring",
       "prompt": "When you're ready to practise the disconnection step, say 'ready'.",
-      "help": "Keep the opening and new cap clear while you follow the practice steps. With the current low-accuracy detector, this rehearsal has no proximity warnings. Say 'done' when you've finished."
+      "help": "Keep the opening and new cap clear while you follow the practice steps. With the current low-accuracy detector, this rehearsal has no proximity warnings. Say 'done' when you've finished.",
+      "exampleResponses": [
+        "Ready.",
+        "Done, I've finished practising the disconnection."
+      ]
     },
     {
       "id": "review",
       "title": "Finish up",
       "responseKind": "actionReport",
       "prompt": "That's the end of this practice. Is there anything you'd like to go back over? If not, say 'all done'.",
-      "help": "You can ask about a step or tell me anything that felt unclear. For a real exchange concern, use the contact instructions from your care team."
+      "help": "You can ask about a step or tell me anything that felt unclear. For a real exchange concern, use the contact instructions from your care team.",
+      "exampleResponses": [
+        "All done.",
+        "Can we go back over the bag check?"
+      ]
     }
   ],
   "voice": {

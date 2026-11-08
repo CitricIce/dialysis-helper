@@ -13,7 +13,7 @@ struct CaptureProbeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("ArmGuard").font(.largeTitle.bold())
+                    Text("Sterling").font(.largeTitle.bold())
                     Text("Camera + LiDAR hardware test").font(.title3)
                     Label(capture.supportsLiDAR ? "Rear LiDAR supported" : "Rear LiDAR unavailable",
                           systemImage: capture.supportsLiDAR ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")

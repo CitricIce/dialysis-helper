@@ -9,6 +9,7 @@ public struct RoutineCheck: Codable, Identifiable, Equatable {
     public let prompt: String
     public let help: String
     public let responseKind: ResponseKind
+    public let exampleResponses: [String]?
 }
 
 public struct RoutineTemplate: Codable, Equatable {

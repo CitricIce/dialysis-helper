@@ -168,7 +168,7 @@ final class CoachViewModel: ObservableObject {
     var summaryText: String {
         let date = statsStarted.formatted(date: .abbreviated, time: .shortened)
         let measured = Int(stats.measuredSeconds.rounded())
-        var lines = ["ArmGuard practice summary · \(date)"]
+        var lines = ["Sterling practice summary · \(date)"]
         if measured == 0 {
             lines.append("No distance was measured (keep a connector tip and a hand in view).")
         } else {
@@ -193,7 +193,7 @@ final class CoachViewModel: ObservableObject {
     }
     var diagnostics: String {
         """
-        ArmGuard practice coach · slot \(selectedSlot)
+        Sterling practice coach · slot \(selectedSlot)
         Phase: \(session?.phase.rawValue ?? "unavailable")
         Check: \(session?.currentCheck?.id ?? "none")
         Model: \(observation.modelStatus)

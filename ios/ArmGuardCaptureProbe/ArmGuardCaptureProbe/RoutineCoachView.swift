@@ -162,15 +162,15 @@ struct RoutineCoachView: View {
         GroupBox("Voice and questions") {
             VStack(alignment: .leading, spacing: 10) {
                 Text(coach.speech.status).font(.caption)
-                Toggle("Listen after a check prompt", isOn: $coach.speech.handsFree)
+                Toggle("Listen after a check prompt", isOn: binding(to: coach.speech, \.handsFree))
                 Text("Check responses use on-device recognition when available. Say pause, help, repeat, confirm or ask a question. Configure voice before hand preparation.").font(.caption)
                 DisclosureGroup("Cartesia connection") {
                     VStack(alignment: .leading, spacing: 8) {
-                        TextField("https://gateway or http://Mac-name.local:8765", text: $coach.speech.gatewayURL)
+                        TextField("https://gateway or http://Mac-name.local:8765", text: binding(to: coach.speech, \.gatewayURL))
                             .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
-                        SecureField("Gateway access token", text: $coach.speech.gatewayToken)
+                        SecureField("Gateway access token", text: binding(to: coach.speech, \.gatewayToken))
                             .textInputAutocapitalization(.never).autocorrectionDisabled()
-                        Toggle("Use Cartesia for routine prompts", isOn: $coach.speech.useCartesia)
+                        Toggle("Use Cartesia for routine prompts", isOn: binding(to: coach.speech, \.useCartesia))
                         Text("The gateway token stays in app memory. Your Cartesia API key belongs on the server.").font(.caption)
                     }.padding(.top, 6)
                 }
@@ -194,7 +194,7 @@ struct RoutineCoachView: View {
         GroupBox("Wristband") {
             VStack(alignment: .leading, spacing: 10) {
                 Text(coach.band.status)
-                Picker("Firmware", selection: $coach.band.protocolMode) {
+                Picker("Firmware", selection: binding(to: coach.band, \.protocolMode)) {
                     Text("Existing fixed patterns").tag(BandProtocolMode.legacy)
                     Text("PWM intensity v2").tag(BandProtocolMode.intensityV2)
                 }.disabled(coach.session?.phase == .monitoring)
@@ -207,5 +207,12 @@ struct RoutineCoachView: View {
                 Text("Select the firmware actually installed. The motor supports variable intensity; PWM v2 requires the matching firmware update. A band connection does not verify hand hygiene.").font(.caption)
             }.frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    // Bind to the child object's mutable field without trying to replace the
+    // coach's immutable reference to that child.
+    private func binding<Object: AnyObject, Value>(to object: Object,
+                                                   _ keyPath: ReferenceWritableKeyPath<Object, Value>) -> Binding<Value> {
+        Binding(get: { object[keyPath: keyPath] }, set: { object[keyPath: keyPath] = $0 })
     }
 }

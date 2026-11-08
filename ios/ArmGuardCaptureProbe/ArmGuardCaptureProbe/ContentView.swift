@@ -113,7 +113,7 @@ struct CaptureProbeView: View {
             }
             .padding()
         }
-        .onChange(of: scenePhase) { phase in
+        .onChange(of: scenePhase) { _, phase in
             if phase != .active && capture.isRunning {
                 capture.stop(reason: "Paused while the app was inactive. Press Start to resume.")
             }

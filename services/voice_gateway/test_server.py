@@ -26,11 +26,13 @@ class MemorySocket:
 class GatewayTests(unittest.TestCase):
     def test_placeholder_visual_step_uses_rehearsal_and_explains_camera_architecture(self):
         payload = server.agent_payload("connect", "voice")
-        self.assertIn("warnings off", payload["config_overrides"]["initial_message"])
+        self.assertIn("distance warnings are experimental", payload["config_overrides"]["initial_message"])
+        self.assertNotIn("warnings off", payload["config_overrides"]["initial_message"])
         self.assertIn("on_device_derived_observations", payload["config_overrides"]["instructions"])
         self.assertIn("detected_objects", payload["config_overrides"]["instructions"])
         active = server.agent_payload("connect", "voice", "unmonitoredPractice")
-        self.assertIn("warnings are off", active["config_overrides"]["initial_message"])
+        self.assertIn("Say 'done'", active["config_overrides"]["initial_message"])
+        self.assertNotIn("warnings are off", active["config_overrides"]["initial_message"])
 
     def setUp(self):
         self.environment = patch.dict(os.environ, {

@@ -296,6 +296,10 @@ struct RoutineCoachView: View {
                  ? coach.conversation.lastReply : coach.message)
                 .font(.title3).fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("assistantReply")
+            if !coach.conversation.audioNotice.isEmpty {
+                Label(coach.conversation.audioNotice, systemImage: "speaker.wave.2")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             if !coach.ended {
                 Text(coach.session?.responseInstruction ?? "Say pause, or ask a question.")
                     .font(.footnote).foregroundStyle(.secondary)
@@ -317,6 +321,8 @@ struct RoutineCoachView: View {
                     .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
             }
             Label(coach.cameraMessage, systemImage: "camera.viewfinder").font(.footnote).foregroundStyle(.secondary)
+            Label(coach.band.connected ? "Wristband connected" : "Wristband not connected", systemImage: "applewatch.radiowaves.left.and.right")
+                .font(.footnote).foregroundStyle(.secondary)
             if !coach.capture.isRunning {
                 Button("Start camera") { coach.startCamera() }.disabled(coach.capture.isStarting)
             }
@@ -496,6 +502,11 @@ struct RoutineCoachView: View {
                         Toggle("Routine debug controls", isOn: $coach.debugControlsEnabled)
                         Text("Shows skip and jump controls on the main screen. Skips are logged as unverified debugging. Camera readiness and contact-review gates still apply.")
                             .font(.footnote)
+                        DisclosureGroup("Voice audio diagnostics") {
+                            Text(coach.conversation.audioDiagnostics).font(.caption.monospaced()).textSelection(.enabled)
+                            Text("Audio packets received but no completed buffers points to phone playback. Reply text with no audio packets points to the voice stream. Output route and volume show where the phone is sending sound.")
+                                .font(.footnote)
+                        }
                         Text(coach.diagnostics).font(.caption.monospaced()).textSelection(.enabled)
                         ShareLink(item: coach.diagnostics) { Text("Share diagnostics") }
                         if let url = coach.logURL { ShareLink(item: url) { Text("Share practice log") } }

@@ -56,7 +56,7 @@ final class CoachVisionPipeline {
     private var scaleTracker = ScaleRiskTracker() // worker queue only; tip size is set per frame from the identified tip
     private var resetTracker = false
     private var labelRoles: [String: DetectionRole] = [:]
-    private var minimumConfidence: Float = 0.45 // protected by lock
+    private var minimumConfidence: Float = Float(DetectionConfidence.preview) // protected by lock
     private let includeDebugPreview: Bool
     private let detectorStatus: DetectorStatus
     private lazy var debugRenderer = FrameRenderer() // worker queue only
@@ -293,7 +293,7 @@ final class CoachVisionPipeline {
                     .joined(separator: "\n").prefix(1500).description
             }
             if detectorStatus == .placeholder {
-                result.decision = .unavailable("Placeholder detector; distance monitoring is off. Camera images are a separate hardware test.")
+                result.decision = .unavailable("Strict depth monitoring is not armed for the placeholder model; experimental image-scale cues are separate.")
             } else if result.modelInstalled && !result.modelUsable {
                 result.decision = .unavailable("Object prediction failed; hand tracking alone cannot protect the opening")
             } else if model == nil && rfdetr == nil {

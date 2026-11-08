@@ -7,8 +7,8 @@ final class ModelDebugController: ObservableObject {
     private let vision = CoachVisionPipeline(includeDebugPreview: true)
     @Published private(set) var observation = CoachVisionSnapshot()
     @Published private(set) var resultFPS = 0.0
-    @Published var confidence = 0.45 {
-        didSet { vision.setConfidenceThreshold(Float(confidence)) }
+    @Published var confidence = DetectionConfidence.preview {
+        didSet { DetectionConfidence.preview = confidence; vision.setConfidenceThreshold(Float(confidence)) }
     }
     private var subscription: AnyCancellable?
     private var clock: Timer?
@@ -37,6 +37,9 @@ final class ModelDebugController: ObservableObject {
     var protectionFresh: Bool { capture.isRunning && (frameAge.map { $0 <= 0.25 } ?? false) }
     var proximityText: String {
         guard protectionFresh else { return "Distance unavailable: observation is paused or older than 250 ms." }
+        if let mm = observation.distanceMM {
+            return String(format: "Experimental gap: %.0f mm · %@. This test sends no band or voice commands.", mm, observation.scaleRisk.title)
+        }
         switch observation.decision {
         case .unavailable(let reason): return reason
         case .clear: return "No near pair in the current depth samples."
@@ -95,7 +98,7 @@ struct ModelDebugView: View {
                             HStack { Text("Minimum confidence"); Spacer(); Text(String(format: "%.0f%%", debug.confidence * 100)) }
                             Slider(value: $debug.confidence, in: 0.1...0.9, step: 0.05)
                                 .accessibilityLabel("Detection confidence threshold")
-                            Text("Lower it to inspect weaker detections. This only changes this test.")
+                            Text("Lower it to inspect weaker detections. This setting also applies to the routine's experimental camera preview.")
                                 .font(.caption).foregroundStyle(.secondary)
                             Toggle("Show hand boxes", isOn: $showHands)
                             Toggle("Show fingertip dots", isOn: $showTips)

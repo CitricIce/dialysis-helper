@@ -612,6 +612,85 @@ checks += [
     })
 ]
 
+checks += [
+    ("Voice playback survives first reply, barge-in clear and subsequent replies", {
+        var audio = VoicePlaybackTracker()
+        audio.beginReply(); audio.receivedAudio()
+        try expect(audio.schedule(samples: 640, at: 0), "First reply rejected")
+        let first = audio.epoch
+        try expect(audio.completed(samples: 640, epoch: first, at: 0.04), "First completion rejected")
+        audio.clear(); audio.beginReply(); audio.receivedAudio()
+        try expect(audio.schedule(samples: 1280, at: 1), "Second reply rejected after clear")
+        let second = audio.epoch
+        try expect(!audio.completed(samples: 640, epoch: first, at: 1.1) && audio.queuedSamples == 1280,
+                   "Old cleared callback consumed the second reply")
+        try expect(audio.completed(samples: 1280, epoch: second, at: 1.2) && audio.queuedSamples == 0,
+                   "Second reply never drained")
+        audio.endedReply(at: 1.3, hasText: true, interrupted: false)
+        try expect(audio.issue(at: 20) == nil, "Healthy later reply marked silent")
+    }),
+    ("Playback watchdog detects stuck output without flagging idle listening", {
+        var audio = VoicePlaybackTracker()
+        try expect(audio.issue(at: 100) == nil, "Idle listening treated as failure")
+        try expect(audio.schedule(samples: 1600, at: 100), "Could not schedule test output")
+        try expect(audio.issue(at: 102) == nil, "Normal playback latency rejected")
+        try expect(audio.issue(at: 104) == .playbackStalled, "Silent stalled queue stayed healthy")
+        audio.clear(cancelReply: false)
+        try expect(audio.issue(at: 105) == nil && audio.schedule(samples: 640, at: 105), "Recovery did not permit fresh audio")
+    }),
+    ("Missing voice audio is distinct from delayed, empty or interrupted text turns", {
+        var audio = VoicePlaybackTracker()
+        audio.beginReply(); audio.endedReply(at: 0, hasText: true, interrupted: false)
+        try expect(audio.issue(at: 7) == nil && audio.issue(at: 8) == .replyAudioMissing, "Missing stream not diagnosed")
+        audio.receivedAudio()
+        try expect(audio.issue(at: 9) == nil, "Late audio did not clear timeout")
+        audio.beginReply(); audio.endedReply(at: 10, hasText: false, interrupted: false)
+        try expect(audio.issue(at: 30) == nil, "Tool-only turn treated as silent speech")
+        audio.beginReply(); audio.endedReply(at: 31, hasText: true, interrupted: true)
+        try expect(audio.issue(at: 60) == nil, "Barge-in treated as missing speech")
+        audio.beginReply(); audio.clear(); audio.endedReply(at: 61, hasText: true, interrupted: false)
+        try expect(audio.issue(at: 90) == nil, "Cancelled output armed silence timeout")
+        audio.beginReply(); audio.endedReply(at: 91, hasText: true, interrupted: false)
+        audio.cancelReplyExpectation()
+        try expect(audio.issue(at: 110) == nil, "A new user turn triggered failure for an older reply")
+    }),
+    ("Playback queue and repeated recovery attempts stay bounded", {
+        var audio = VoicePlaybackTracker()
+        try expect(!audio.schedule(samples: 0, at: 0) && !audio.schedule(samples: 96001, at: 0), "Unbounded audio accepted")
+        try expect(audio.schedule(samples: 96000, at: 0) && !audio.schedule(samples: 1, at: 0), "Queue exceeded six seconds")
+        var budget = VoiceRecoveryBudget()
+        try expect(budget.take(at: 0) && budget.take(at: 1) && !budget.take(at: 2), "Recovery loop not bounded")
+        try expect(budget.take(at: 16), "Recovery budget never resets")
+    }),
+    ("Experimental scale warnings reach routine risk and BLE encoding in rehearsal", {
+        for phase in [RoutinePhase.checking, .unmonitoredPractice, .paused, .idle] {
+            for level in [RiskLevel.medium, .high] {
+                let routed = ProximityFeedback.combinedLevel(phase: phase, fresh: true,
+                    decision: .unavailable("Strict depth monitor not armed"), distanceMM: 5, scaleRisk: level)
+                try expect(routed == level, "Routine phase suppressed image-scale warning")
+                let intensity: UInt8 = routed == .high ? 255 : 200
+                try expect(BandEncoding.payload(intensity: intensity, suspected: routed == .high, mode: .legacy) ==
+                    (routed == .high ? [69] : [87]), "Legacy band warning did not match screen risk")
+                try expect(BandEncoding.payload(intensity: intensity, suspected: routed == .high, mode: .intensityV2) ==
+                    (routed == .high ? [2, 255] : [1, 200]), "Variable-intensity band warning did not match screen risk")
+            }
+        }
+        try expect(ProximityFeedback.distanceLevel(fresh: false, distanceMM: 1, risk: .high) == .none, "Stale estimate drove cues")
+        try expect(ProximityFeedback.distanceLevel(fresh: true, distanceMM: nil, risk: .high) == .none, "Missing distance drove cues")
+        try expect(ProximityFeedback.distanceLevel(fresh: true, distanceMM: .nan, risk: .high) == .none, "Invalid distance drove cues")
+    }),
+    ("Detection preview tuning persists across debug and routine configurations", {
+        let previous = DetectionConfidence.preview
+        defer { DetectionConfidence.preview = previous }
+        DetectionConfidence.preview = 0.2
+        try expect(DetectionConfidence.preview == 0.2, "Test threshold was not saved for routine use")
+        DetectionConfidence.preview = .nan
+        try expect(DetectionConfidence.preview == 0.2, "Invalid setting replaced a usable threshold")
+        DetectionConfidence.preview = 2
+        try expect(DetectionConfidence.preview == 0.9, "Threshold escaped its supported range")
+    })
+]
+
 var failures = 0
 for (name, check) in checks {
     do {

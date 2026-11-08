@@ -79,3 +79,17 @@ template. Keep exampleResponses beside each check in RoutineTemplate.json and sh
 them in the routine editor. Technical panels, model/depth tests and measurement
 summaries remain accessible through Settings → Developer mode. Preserve this access
 when changing the consumer UI. Do not turn practice counts into adherence claims.
+
+## Voice and warning integration
+
+After the routine starts, ordinary progression must work through speech. Do not
+send the user to Developer mode to say next step. Keep pause/resume listening and
+handle phone audio-route/engine recovery without silently dropping output. Audio
+packet receipt and text generation are not proof of speaker playback. Native
+image-scale cues remain active independently of the stricter depth-monitoring
+phase; do not say warnings are off merely because the model is a placeholder or
+the internal routine phase is unmonitoredPractice. Missing/stale estimates mean
+warnings are unavailable, not that distance is safe. Reuse saved preview confidence
+between debug and routine. Preserve the 250 ms freshness rule, warning zones and
+BLE command expiry. Band writes are not motor acknowledgements. Pair/authorize
+before hands-free use; an explicit band disconnect stops automatic retries.

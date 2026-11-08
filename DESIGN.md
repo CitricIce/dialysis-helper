@@ -8,6 +8,78 @@
 
 Logo concept: [silver-ring wordmark](assets/branding/sterling-logo-v1.png).
 
+## Current voice playback and routine warnings (November 8, 2026)
+
+The user reported sound stopping after the first spoken reply while text continued,
+and missing cues in the connection screen. These reports are not physically
+reproduced on this Mac. Code review found missing audio-engine recovery, separate
+debug/routine confidence settings, misleading “warnings off” prompts, and a BLE
+firmware selection that did not persist. The following changes address those gaps:
+
+- **Audio:** `CartesiaConversation` rebuilds its input converter and player connection
+  after stopped-engine/configuration/route changes, observes interruptions and media
+  service resets, and defaults a built-in receiver route back to the speaker while
+  preserving selected headphones. Normal recovery keeps the same WebSocket, agent
+  conversation and native routine state. Cleared/stopped playback invalidates old
+  completion callbacks before they can consume a later reply's queue.
+- **Failure handling:** bounded recovery (two attempts within 15 seconds), a stalled
+  playback watchdog, a 3-second microphone-delivery check and an 8-second
+  text-without-audio check prevent indefinitely
+  silent connected calls. Interrupted/cancelled/empty turns and a new user turn do
+  not trigger the missing-audio check. If recovery/streaming fails, the existing
+  phone-voice fallback announces the problem and continues listening. If iOS denies
+  audio resumption or local audio cannot start, the routine pauses instead of
+  pretending it is speaking. Permissions/other apps/system audio focus can still
+  require user action; normal routine steps do not require screen interaction.
+- **Native fallback:** local audio configuration failures are surfaced, failed clip
+  playback falls back to phone speech, and a late completion from an old synthesized
+  utterance cannot restart listening during a newer reply. Unexpected cancellation
+  of the current phone utterance is surfaced instead of leaving listening stuck.
+- **Hands-free progress:** ordinary spoken “next step” works without Developer mode
+  and records unverified practice progression. Pause keeps a working Cartesia call
+  listening for “resume”. Ready/done still control connection/disconnection practice;
+  contact-review and deliberate strict-depth arming rules are unchanged. Repeated
+  native cues retain the pending automatic return to Cartesia.
+- **Warning behavior:** image-scale MEDIUM/HIGH cues were not removed by the UI
+  redesign. They remain independent of strict depth-monitoring and rehearsal phase.
+  Fresh usable estimates (source age at most 250 ms) drive the main banner and BLE;
+  no tip/hand measurement or stale analysis produces no distance command. Default
+  zones remain HIGH 10 mm and MEDIUM 30 mm with existing hysteresis. Voice names the
+  level: **“Medium risk. Move back.” / “High risk. Hands back.”** Existing 0.3-second
+  voice dwell, escalation-only cues and 8-second sustained-HIGH repeat remain.
+- **Accurate prompts:** the template, native fallback wording, agent instructions and
+  optional gateway now distinguish experimental image-scale cues from stricter depth
+  monitoring. They no longer claim camera warnings are switched off in rehearsal.
+  Native state exposes actual warning availability/level and band connectivity to
+  the agent. A low-accuracy model still cannot verify sterility or physical contact.
+- **Debug/routine parity:** the confidence selected in the model test is saved and
+  reused by the routine's experimental preview (default 45%). It no longer silently
+  resets to another threshold. Deliberate strict experimental monitoring retains its
+  fixed default threshold. The main camera status says whether the tip, hand or a
+  sufficiently recent analysis is missing; model test shows the image-scale gap too.
+  It remains a camera-only test with no voice or Bluetooth client.
+- **Wristband:** selected firmware persists. Starting/resuming a routine reconnects
+  a previously authorized band, and lost connections retry at most once every ten
+  seconds during voice-enabled practice. No new permission dialog is launched by
+  this automatic reconnect. Explicit disconnect stops retries. HIGH submits E in
+  legacy mode or [2,255] in v2; MEDIUM submits W or [1,200]. Expired commands still
+  stop after 250 ms; reconnect never replays an old hazard.
+- **Diagnostics:** Settings → Developer mode → Developer tools → Voice audio
+  diagnostics distinguishes packets received, buffers completed, queue length,
+  engine/player state, clears, recoveries, output route and output volume. Shared
+  diagnostics include detection confidence/frame age and BLE writes submitted/last
+  command/protocol. A completed buffer is not proof of audible sound, and a submitted
+  BLE write has no motor acknowledgement. No audio bytes, keys or transcripts are
+  included in these diagnostic counters.
+
+Validation: **55 portable checks, 16 gateway/setup tests, project validation and
+all 21 Swift sources type-checked against Apple Mac Catalyst frameworks**. This is
+not an iPhone SDK build or a physical reproduction. On iPhone 15 Pro, test several
+spoken replies, pause/resume, a near approach during connection and disconnection,
+route/interruption recovery, and actual band vibration. If a failure persists,
+share the audio/BLE diagnostics captured immediately after it; do not lower the
+freshness requirement to make old camera frames generate cues.
+
 ## Current Sterling interface (November 8, 2026)
 
 The three supplied sketches (`IMG_2638`, `IMG_2637`, `IMG_2636`) and
@@ -62,9 +134,10 @@ volumes, dwell times and clinical advice from the HTML were not adopted.
   sources type-check against actual Apple Mac Catalyst frameworks. An iPhone SDK
   build, launch-screen layout, Dynamic Type/VoiceOver, notification delivery, and the
   combined camera/voice/band flow on iPhone 15 Pro still require full Xcode/the phone.
-  Earlier validation counts below describe their respective historical changes.
+  This UI-only validation was superseded by the audio/warning verification above;
+  other earlier validation counts describe their respective historical changes.
 
-## Short spoken warnings that don't pile up (November 8)
+## Earlier short spoken warnings (policy retained; wording superseded above)
 
 The old cues took 4–5 seconds to say but repeated every 4 seconds and cut each other off,
 so a hand near a boundary produced a stream of half-sentences. Now the **band and screen

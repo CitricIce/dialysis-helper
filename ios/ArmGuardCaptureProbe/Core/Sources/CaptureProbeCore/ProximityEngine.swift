@@ -121,6 +121,16 @@ public enum RiskLevel: Int, Comparable {
 
 /// One source for display/haptic severity. Detection outside an armed routine cannot alert.
 public enum ProximityFeedback {
+    /// Image-scale cues are independent of strict depth-monitoring/rehearsal phases.
+    public static func distanceLevel(fresh: Bool, distanceMM: Double?, risk: RiskLevel) -> RiskLevel {
+        guard fresh, let distanceMM, distanceMM.isFinite, distanceMM >= 0 else { return .none }
+        return risk
+    }
+    public static func combinedLevel(phase: RoutinePhase?, fresh: Bool, decision: ProximityDecision,
+                                     distanceMM: Double?, scaleRisk: RiskLevel) -> RiskLevel {
+        max(level(phase: phase, fresh: fresh, decision: decision),
+            distanceLevel(fresh: fresh, distanceMM: distanceMM, risk: scaleRisk))
+    }
     public static func level(phase: RoutinePhase?, fresh: Bool, decision: ProximityDecision) -> RiskLevel {
         guard phase == .monitoring, fresh else { return .none }
         switch decision {
@@ -447,5 +457,21 @@ public struct SafetyStats: Equatable {
             }
         }
         level = newLevel
+    }
+}
+
+
+public enum DetectionConfidence {
+    public static let defaultValue = 0.45
+    private static let key = "sterling.previewConfidence"
+    public static var preview: Double {
+        get {
+            let value = UserDefaults.standard.double(forKey: key)
+            return value.isFinite && (0.1...0.9).contains(value) ? value : defaultValue
+        }
+        set {
+            guard newValue.isFinite else { return }
+            UserDefaults.standard.set(min(0.9, max(0.1, newValue)), forKey: key)
+        }
     }
 }

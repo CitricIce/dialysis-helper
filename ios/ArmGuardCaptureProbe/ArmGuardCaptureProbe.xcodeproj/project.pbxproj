@@ -31,6 +31,7 @@
 		DE7DAC8F33C1FB5DE12448B4 /* ArmGuardCaptureProbe/PracticePlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AAA1987E22E9EBD27ABF1E0; };
 		F2D45EAE38A73A893736C541 /* Core/Sources/CaptureProbeCore/PracticeSchedule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06A156B275DC84298F60DB93; };
 		BAA4F7BC7BDBE42F27AA03DF /* ArmGuardCaptureProbe/BrandAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3154D0FDAD037C65C79DD9F8; };
+		30EDDEB40E24246426426F48 /* Core/Sources/CaptureProbeCore/VoicePlaybackTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 441F1E5FF49CB2635870C02F; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -61,6 +62,7 @@
 		7AAA1987E22E9EBD27ABF1E0 /* ArmGuardCaptureProbe/PracticePlanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArmGuardCaptureProbe/PracticePlanner.swift; sourceTree = "<group>"; };
 		06A156B275DC84298F60DB93 /* Core/Sources/CaptureProbeCore/PracticeSchedule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Sources/CaptureProbeCore/PracticeSchedule.swift; sourceTree = "<group>"; };
 		3154D0FDAD037C65C79DD9F8 /* ArmGuardCaptureProbe/BrandAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = ArmGuardCaptureProbe/BrandAssets.xcassets; sourceTree = "<group>"; };
+		441F1E5FF49CB2635870C02F /* Core/Sources/CaptureProbeCore/VoicePlaybackTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Core/Sources/CaptureProbeCore/VoicePlaybackTracker.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -77,6 +79,7 @@
 		807C382AB49A9BFF2D00E986 = {
 			isa = PBXGroup;
 			children = (
+				441F1E5FF49CB2635870C02F /* Core/Sources/CaptureProbeCore/VoicePlaybackTracker.swift */,
 				3154D0FDAD037C65C79DD9F8 /* ArmGuardCaptureProbe/BrandAssets.xcassets */,
 				06A156B275DC84298F60DB93 /* Core/Sources/CaptureProbeCore/PracticeSchedule.swift */,
 				7AAA1987E22E9EBD27ABF1E0 /* ArmGuardCaptureProbe/PracticePlanner.swift */,
@@ -186,6 +189,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				30EDDEB40E24246426426F48 /* Core/Sources/CaptureProbeCore/VoicePlaybackTracker.swift in Sources */,
 				F2D45EAE38A73A893736C541 /* Core/Sources/CaptureProbeCore/PracticeSchedule.swift in Sources */,
 				DE7DAC8F33C1FB5DE12448B4 /* ArmGuardCaptureProbe/PracticePlanner.swift in Sources */,
 				F502457080B008F19C1D848A /* ArmGuardCaptureProbe/SterlingBrand.swift in Sources */,

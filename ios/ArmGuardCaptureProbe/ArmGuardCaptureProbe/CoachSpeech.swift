@@ -31,6 +31,7 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
     @Published private(set) var status = "Built-in voice ready"
     @Published private(set) var transcript = ""
     @Published private(set) var isListening = false
+    var onFailure: ((String) -> Void)?
     var onFinished: (() -> Void)?
     var onResponse: ((String) -> Void)?
     var canListen: (() -> Bool)?
@@ -45,14 +46,16 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
     private var token = UUID()
     private var tapInstalled = false
     private var speaking = false
+    private var currentUtterance: AVSpeechUtterance?
+    private var currentText = ""
     private var clipTask: Task<Void, Never>?
     private var alertClips: [String: Data] = [:]
     private var retryTimer: Timer?
     private var listeningLimit: Timer?
     private var recognitionFailures = 0
     // Kept to about a second each so cues never pile up; the band and screen alert continuously.
-    static let nearCue = "Careful, too close."
-    static let highCue = "Stop. Hands back."
+    static let nearCue = "Medium risk. Move back."
+    static let highCue = "High risk. Hands back."
     static let reviewCue = "Your hand overlaps the opening in the image. Pause and follow your dialysis team's instructions about possible contact."
     static let viewLostCue = "I've lost a clear view. We're paused. Restore the view, then say resume."
 
@@ -119,6 +122,7 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         stop()
         let current = token
         speaking = true
+        currentText = text
         if urgent, let data = alertClips[text] {
             do {
                 try configureAudio()
@@ -157,15 +161,26 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
 
     private func configureAudio() throws {
         try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
-        try AVAudioSession.sharedInstance().setActive(true)
+        let session = AVAudioSession.sharedInstance()
+        try session.setActive(true)
+        if session.currentRoute.outputs.contains(where: { $0.portType == .builtInReceiver }) {
+            try session.overrideOutputAudioPort(.speaker)
+        }
     }
 
     private func localSpeech(_ text: String, status: String) {
-        try? configureAudio()
+        do { try configureAudio() }
+        catch {
+            speaking = false
+            self.status = "Phone audio could not start."
+            onFailure?("The phone microphone or speaker is unavailable. Resume voice after the interruption ends.")
+            return
+        }
         self.status = status
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.9
+        currentUtterance = utterance
         synthesizer.speak(utterance)
     }
 
@@ -178,7 +193,7 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         token = UUID()
         networkTask?.cancel()
         networkTask = nil
-        speaking = false
+        speaking = false; currentUtterance = nil; currentText = ""
         synthesizer.stopSpeaking(at: .immediate)
         player?.stop()
         player = nil
@@ -297,10 +312,24 @@ final class CoachSpeech: NSObject, ObservableObject, AVSpeechSynthesizerDelegate
         }
     }
 
-    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) { finishedSpeaking() }
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        guard currentUtterance === utterance else { return }
+        currentUtterance = nil; finishedSpeaking()
+    }
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        guard currentUtterance === utterance else { return }
+        currentUtterance = nil; speaking = false
+        onFailure?("Phone speech was interrupted. Resume voice when the phone's audio is available.")
+    }
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         guard self.player === player else { return }
-        finishedSpeaking()
+        if flag { finishedSpeaking() }
+        else { localSpeech(currentText, status: "Phone voice fallback") }
+    }
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        guard self.player === player else { return }
+        self.player = nil
+        localSpeech(currentText, status: "Phone voice fallback")
     }
 }
 

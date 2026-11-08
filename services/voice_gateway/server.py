@@ -35,9 +35,9 @@ def agent_payload(check_id, voice_id, phase="checking"):
     elif phase == "monitoring":
         initial = "I'm listening. Tell me when you've finished, or say pause."
     elif phase == "unmonitoredPractice":
-        initial = template.get("voice", {}).get("unmonitored_active", "Camera warnings are off for this rehearsal. Say done when you've finished.")
+        initial = template.get("voice", {}).get("unmonitored_active", "Say done when you've finished, or pause.")
     elif phase == "checking" and check and check["responseKind"] == "monitoring" and template.get("detectorStatus", "placeholder") == "placeholder":
-        initial = template.get("voice", {}).get("unmonitored_ready", "Say ready to rehearse this step with camera warnings off.")
+        initial = template.get("voice", {}).get("unmonitored_ready", "Camera distance cues are experimental. Say ready to practise, then done to finish.")
     context = {"starting_phase": phase, "starting_check_id": check_id, "checks": template["checks"],
                "detector_status": template.get("detectorStatus", "placeholder"), "camera_access": "on_device_derived_observations"}
     return {"config_overrides": {

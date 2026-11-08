@@ -8,8 +8,13 @@ final class CoachViewModel: ObservableObject {
     let band = BandClient()
     let conversation = CartesiaConversation()
     private let vision = CoachVisionPipeline(includeDebugPreview: true)
-    @Published var detectionConfidence = 0.45 {
-        didSet { if session?.template.detectorStatus != .experimental { vision.setConfidenceThreshold(Float(detectionConfidence)) } }
+    @Published var detectionConfidence = DetectionConfidence.preview {
+        didSet {
+            if session?.template.detectorStatus != .experimental {
+                DetectionConfidence.preview = detectionConfidence
+                vision.setConfidenceThreshold(Float(detectionConfidence))
+            }
+        }
     }
     @Published private(set) var session: RoutineSession?
     @Published private(set) var stats = SafetyStats()
@@ -71,14 +76,16 @@ final class CoachViewModel: ObservableObject {
             self.resumeCloudAfterCue = false
             self.connectVoice()
         }
+        conversation.onNeedsResume = { [weak self] notice in self?.audioNeedsResume(notice) }
+        speech.onFailure = { [weak self] notice in self?.audioNeedsResume(notice) }
         conversation.onReady = { [weak self] in
             self?.startCamera()
             self?.speech.prepareAlertClips()
         }
-        conversation.onFailure = { [weak self] _ in
+        conversation.onFailure = { [weak self] reason in
             guard let self, self.voiceEnabled else { return }
             self.resumeCloudAfterCue = false
-            self.message = "The voice connection dropped. I'm using the phone voice for now. " + self.currentPrompt
+            self.message = reason + " I'm using the phone voice for now. " + self.currentPrompt
             self.speech.speak(self.message, urgent: true)
         }
         conversation.onUserUtterance = { [weak self] text, turn in
@@ -133,11 +140,11 @@ final class CoachViewModel: ObservableObject {
     /// Camera-distance (SPINOSAURUS) level from the fixed tip sizes; needs a fresh observation.
     /// Unlike the LiDAR path it runs in every phase, so it warns during rehearsal too.
     var distanceRisk: RiskLevel {
-        guard fresh, observation.distanceMM != nil else { return .none }
-        return observation.scaleRisk
+        ProximityFeedback.distanceLevel(fresh: fresh, distanceMM: observation.distanceMM, risk: observation.scaleRisk)
     }
     var riskLevel: RiskLevel {
-        max(ProximityFeedback.level(phase: session?.phase, fresh: fresh, decision: observation.decision), distanceRisk)
+        ProximityFeedback.combinedLevel(phase: session?.phase, fresh: fresh, decision: observation.decision,
+            distanceMM: observation.distanceMM, scaleRisk: observation.scaleRisk)
     }
     var distanceText: String {
         guard fresh, let mm = observation.distanceMM else { return "Camera distance: waiting for a hand and a connector tip in view" }
@@ -203,6 +210,11 @@ final class CoachViewModel: ObservableObject {
         Observation: \(riskText)
         \(distanceText)
         Band: \(band.status)
+        \(band.diagnostics)
+        Detector confidence: \(Int(detectionConfidence * 100))%; frame age: \(observationAge.map { String(format: "%.0f ms", $0 * 1000) } ?? "none")
+        Voice audio:
+        \(conversation.audioDiagnostics)
+        Native voice: \(speech.status); listening: \(speech.isListening)
         No prescription configured. No sterility or contact verification.
         """
     }
@@ -220,12 +232,13 @@ final class CoachViewModel: ObservableObject {
     }
     var cameraMessage: String {
         if session?.reviewRequired == true { return "Possible contact needs review" }
-        if session?.template.detectorStatus != .experimental {
-            return "Practice preview · camera distance warnings on (experimental)"
-        }
-        if !observation.modelInstalled { return observation.modelStatus }
-        if session?.phase == .monitoring { return "Camera watching" }
-        return "Camera needs a clear view before watching"
+        guard capture.isRunning else { return capture.isStarting ? "Starting camera" : "Camera is not running" }
+        guard fresh else { return "Camera analysis is delayed. Distance warnings are unavailable until it catches up." }
+        guard !observation.regions.isEmpty else { return "Looking for a connector tip. No distance warning is available yet." }
+        guard observation.distanceMM != nil else { return "Show your hand and the connector tip together so I can estimate the gap." }
+        if distanceRisk == .high { return "High risk. Move your hand back." }
+        if distanceRisk == .medium { return "Medium risk. Keep a gap." }
+        return "Experimental distance estimate available. No close approach detected in this frame."
     }
     func start(usePhoneVoice: Bool = false) {
         guard session?.phase == .idle else { return }
@@ -234,6 +247,7 @@ final class CoachViewModel: ObservableObject {
             return
         }
         ended = false; voiceEnabled = true
+        band.beginRoutineConnection()
         resetStats()
         session?.start(); persist()
         message = currentPrompt
@@ -258,7 +272,12 @@ final class CoachViewModel: ObservableObject {
         resetStats()
         message = "Start when you're ready for another practice."
     }
-    func startCamera() { vision.setActive(true); capture.start() }
+    func startCamera() {
+        if session?.template.detectorStatus != .experimental { detectionConfidence = DetectionConfidence.preview }
+        else { vision.setConfidenceThreshold(Float(DetectionConfidence.defaultValue)) }
+        guard !capture.isRunning, !capture.isStarting else { return }
+        vision.setActive(true); capture.start()
+    }
     func scanLabel() {
         guard capture.isRunning, session?.phase == .checking else {
             say("The camera needs to be running before I can read a label."); return
@@ -287,7 +306,9 @@ final class CoachViewModel: ObservableObject {
             } else { say(currentPrompt) }
         case .skipStep:
             if debugControlsEnabled { debugSkipStep() }
-            else { say("To skip steps while testing, turn on routine debug controls in Developer tools.") }
+            else if let checkID = session?.currentCheck?.id, session?.assistantAdvance(checkID: checkID) == true {
+                persist(); prompt() // Explicit spoken progression is unverified, like the assistant's advance tool.
+            } else { say("Let's stay here. " + currentPrompt) }
         case .readLabel: scanLabel()
         case .finishPreparation: finishPreparation()
         case .finishMonitoring: finishMonitoring()
@@ -319,9 +340,15 @@ final class CoachViewModel: ObservableObject {
             "latest_reply_handled_natively": nativeCommand != nil,
             "assistant_can_advance": session?.phase == .unmonitoredPractice || (session?.phase == .checking && session?.reviewRequired == false && session?.currentCheck?.responseKind != .monitoring),
             "detector_status": (session?.template.detectorStatus ?? .placeholder).rawValue,
-            "visual_mode": session?.phase == .monitoring ? "experimental_monitoring" : "unmonitored_practice",
+            "visual_mode": session?.phase == .monitoring ? "experimental_monitoring" : "experimental_preview",
+            "distance_warnings_enabled": true,
+            "distance_warning_level": distanceRisk == .high ? "high" : distanceRisk == .medium ? "medium" : "none",
+            "distance_estimate_fresh": fresh && observation.distanceMM != nil,
             "camera_running": capture.isRunning,
-            "camera_status": capture.status,
+            "camera_status": cameraMessage,
+            "wristband_connected": band.connected,
+            "wristband_status": band.status,
+            "wristband_last_write": band.lastCommandDescription,
             "rear_lidar_supported": capture.supportsLiDAR,
             "vision_fresh": displayFresh,
             "vision_protection_fresh": fresh,
@@ -375,7 +402,7 @@ final class CoachViewModel: ObservableObject {
     private func say(_ text: String, urgent: Bool = false) {
         message = text
         if urgent {
-            resumeCloudAfterCue = conversation.active && voiceConfigured && voiceEnabled
+            resumeCloudAfterCue = resumeCloudAfterCue || (conversation.active && voiceConfigured && voiceEnabled)
             conversation.stop()
             speech.speak(text, urgent: true)
         } else if !conversation.active { speech.speak(text, urgent: true) }
@@ -421,7 +448,8 @@ final class CoachViewModel: ObservableObject {
     }
     func pause() {
         session?.pause(); band.stop(); persist()
-        say("We're paused. Take your time. Say resume when you're ready.", urgent: true)
+        // Pausing the routine must keep the live microphone and conversation for spoken resume.
+        say("We're paused. Take your time. Say resume when you're ready.")
     }
     func resume() {
         session?.resume(); startCamera(); persist(); prompt()
@@ -453,6 +481,11 @@ final class CoachViewModel: ObservableObject {
         session?.pause(); persist(); voiceEnabled = false; resumeCloudAfterCue = false
         pauseHardware(); message = "Paused. Resume when you're ready."
     }
+    private func audioNeedsResume(_ notice: String) {
+        session?.pause(); band.stop(); persist()
+        voiceEnabled = false; resumeCloudAfterCue = false
+        conversation.stop(); speech.stop(); message = notice
+    }
     func foregrounded() {
         // Permission sheets briefly make the app inactive without ending practice.
         guard voiceEnabled, !conversation.active, !speech.isListening else { return }
@@ -460,7 +493,7 @@ final class CoachViewModel: ObservableObject {
     }
     func resumeVoice() {
         guard session?.phase != .idle, !ended else { return }
-        voiceEnabled = true
+        voiceEnabled = true; band.beginRoutineConnection()
         if voiceConfigured { connectVoice() } else { prompt() }
     }
     func usePhoneVoice() {
@@ -470,11 +503,12 @@ final class CoachViewModel: ObservableObject {
     }
     private func pauseHardware() {
         vision.setActive(false); capture.stop(reason: "Camera paused")
-        band.stop(); speech.suspend(); conversation.stop()
+        band.endRoutineConnection(); speech.suspend(); conversation.stop()
     }
     private func checkHealth() {
         objectWillChange.send() // Keep displayed frame age/staleness honest between results.
         driveDistanceAlerts()
+        if voiceEnabled, !ended, session?.phase != .idle, session?.phase != .completed { band.maintainRoutineConnection() }
         guard session?.phase == .monitoring else { return }
         if !fresh { loseObservation("Observation lost or delayed. Pause and restore a clear view before rearming.") }
     }
@@ -492,7 +526,7 @@ final class CoachViewModel: ObservableObject {
             scannedLabel = output.labelText
             let labelReply = "The visible label says: " + String(output.labelText.prefix(800)) + ". Compare that with your written instructions."
             message = labelReply
-            resumeCloudAfterCue = conversation.active && voiceConfigured && voiceEnabled
+            resumeCloudAfterCue = resumeCloudAfterCue || (conversation.active && voiceConfigured && voiceEnabled)
             speech.useCartesia = conversation.active
             conversation.stop()
             if voiceEnabled { speech.speak(labelReply) }

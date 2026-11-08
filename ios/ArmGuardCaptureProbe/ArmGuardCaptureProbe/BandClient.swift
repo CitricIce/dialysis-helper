@@ -1,12 +1,18 @@
 import CoreBluetooth
 import Combine
+import Foundation
 
 final class BandClient: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     @Published private(set) var status = "Band disconnected"
     @Published private(set) var connected = false
-    @Published var protocolMode: BandProtocolMode = .legacy {
+    @Published var protocolMode = BandProtocolMode(rawValue: UserDefaults.standard.string(forKey: "sterling.bandProtocol") ?? "legacy") ?? .legacy {
         willSet { if newValue != protocolMode { disconnect() } }
+        didSet { UserDefaults.standard.set(protocolMode.rawValue, forKey: "sterling.bandProtocol") }
     }
+    @Published private(set) var writesSubmitted = 0
+    @Published private(set) var lastCommandDescription = "No command sent"
+    private var keepConnected = false
+    private var lastConnectionAttempt = -Double.infinity
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
     private var characteristic: CBCharacteristic?
@@ -23,7 +29,22 @@ final class BandClient: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     private var scanTimer: Timer?
 
     override init() { super.init() } // Bluetooth permission is requested only on Connect.
+    func beginRoutineConnection() {
+        keepConnected = true; lastConnectionAttempt = -Double.infinity
+        maintainRoutineConnection()
+    }
+    func maintainRoutineConnection() {
+        // Pair/authorize once during setup. A routine never launches a new permission prompt.
+        guard keepConnected, !connected, peripheral == nil, CBManager.authorization == .allowedAlways,
+              ProcessInfo.processInfo.systemUptime - lastConnectionAttempt >= 10 else { return }
+        connect()
+    }
+    func endRoutineConnection() { keepConnected = false; stop() }
+    var diagnostics: String {
+        "BLE protocol: \(protocolMode.rawValue); writes submitted: \(writesSubmitted); last command: \(lastCommandDescription). Writes have no motor acknowledgement."
+    }
     func connect() {
+        lastConnectionAttempt = ProcessInfo.processInfo.systemUptime
         if central == nil { central = CBCentralManager(delegate: self, queue: .main) }
         else if central.state == .poweredOn { scan() }
     }
@@ -38,6 +59,7 @@ final class BandClient: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         }
     }
     func disconnect() {
+        keepConnected = false
         stop()
         scanTimer?.invalidate(); scanTimer = nil
         central?.stopScan()
@@ -65,6 +87,10 @@ final class BandClient: NSObject, ObservableObject, CBCentralManagerDelegate, CB
         guard peripheral.canSendWriteWithoutResponse else { return }
         peripheral.writeValue(next, for: characteristic, type: .withoutResponse)
         lastSent = next
+        writesSubmitted += 1
+        if next == off { lastCommandDescription = "Stop" }
+        else if protocolMode == .legacy { lastCommandDescription = next == Data([69]) ? "High-risk pattern (E)" : "Medium-risk pattern (W)" }
+        else { lastCommandDescription = "Intensity \(next.last ?? 0) (v2)" }
     }
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         if central.state == .poweredOn { scan() }
@@ -109,13 +135,15 @@ final class BandClient: NSObject, ObservableObject, CBCentralManagerDelegate, CB
     }
     func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) { flush() }
     func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
-        disconnect(); status = "Band connection failed; retry Connect"
+        let retry = keepConnected
+        disconnect(); keepConnected = retry
+        status = retry ? "Band connection failed; retrying during the routine" : "Band connection failed; retry Connect"
     }
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        // Do not replay a previous intensity on reconnection. User reconnects explicitly.
+        // Retry a previously authorized band during a routine; never replay an old intensity.
         if self.peripheral?.identifier == peripheral.identifier {
             self.peripheral = nil; characteristic = nil; connected = false
-            timer?.invalidate(); timer = nil; lastSent = nil
+            timer?.invalidate(); timer = nil; lastSent = nil; validUntil = 0
             status = "Band lost; audio and display remain available"
         }
     }

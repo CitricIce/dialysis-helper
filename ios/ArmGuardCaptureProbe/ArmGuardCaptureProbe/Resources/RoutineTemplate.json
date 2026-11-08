@@ -73,7 +73,7 @@
       "title": "Connect",
       "responseKind": "monitoring",
       "prompt": "When you're ready to practise the connection step, say 'ready'.",
-      "help": "The phone processes the camera locally. With the current low-accuracy detector we can rehearse the flow, but its predictions do not provide proximity warnings.",
+      "help": "The phone analyzes the camera locally and sends experimental distance cues to your wristband. The detector can miss a close approach; it cannot confirm contact or sterility. Say 'ready' to practise, then 'done' when you've finished.",
       "exampleResponses": [
         "Ready.",
         "Done, I've finished practising the connection.",
@@ -106,7 +106,7 @@
       "title": "Disconnect",
       "responseKind": "monitoring",
       "prompt": "When you're ready to practise the disconnection step, say 'ready'.",
-      "help": "Keep the opening and new cap clear while you follow the practice steps. With the current low-accuracy detector, this rehearsal has no proximity warnings. Say 'done' when you've finished.",
+      "help": "Keep the opening and new cap clear while following your practice steps. Experimental distance cues may miss a close approach. Say 'ready' to begin, then 'done' when you've finished.",
       "exampleResponses": [
         "Ready.",
         "Done, I've finished practising the disconnection."
@@ -140,8 +140,8 @@
     "confirmation_retry": "We're still confirming what I read back. {instruction}",
     "uncertain_reply": "Take your time. {instruction}",
     "bag_correction": "I've kept the earlier details. Tell me what needs correcting; you don't need to start over.",
-    "unmonitored_ready": "The current detector is low accuracy, so this is a rehearsal with camera warnings off. Say 'ready' to practise this step, then 'done' when you've finished.",
-    "unmonitored_active": "Camera warnings are off for this rehearsal. Say 'done' when you've finished, or 'pause'."
+    "unmonitored_ready": "The camera preview and distance warnings are experimental. Say 'ready' to practise this step, then 'done' when you've finished.",
+    "unmonitored_active": "Say 'done' when you've finished, or 'pause' if you need a moment."
   },
   "detectorStatus": "placeholder"
 }
